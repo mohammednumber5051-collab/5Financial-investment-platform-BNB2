@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/financial-platform/"
+title = "المنصة المالية"
+version = "1.0.0"
+id = "artifacts/financial-platform"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/financial-platform/" ]
+localPort = 25988
+
+[services.development]
+run = "pnpm --filter @workspace/financial-platform run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/financial-platform", "run", "build" ]
+publicDir = "artifacts/financial-platform/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25988"
+BASE_PATH = "/financial-platform/"
