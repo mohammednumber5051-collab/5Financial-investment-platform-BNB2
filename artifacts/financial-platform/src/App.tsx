@@ -222,75 +222,87 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
     return n.toLocaleString("en-US");
   }
 
+  /* ── نافذة تأكيد السحب ── */
   if (step === "confirm") {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center px-4"
-        style={{ background: "rgba(15,20,50,0.55)" }}
+        className="fixed inset-0 z-50 flex items-center justify-center px-5"
+        style={{ background: "rgba(10,15,40,0.6)" }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <div
-          className="w-full max-w-md bg-white rounded-3xl overflow-hidden"
+          className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
           style={{ fontFamily: "'Cairo', sans-serif" }}
+          dir="rtl"
         >
-          {/* Confirm header */}
-          <div className="px-6 pt-6 pb-4 text-right">
-            <h3 className="text-[18px] font-extrabold text-[#1a1f3c]">تأكيد السحب</h3>
-            <p className="text-[12px] text-[#8892a4] font-medium mt-1">
+          {/* Header */}
+          <div className="px-6 pt-7 pb-5">
+            <h3 className="text-[19px] font-extrabold text-[#1a1f3c] text-right leading-snug">
+              تأكيد السحب
+            </h3>
+            <p className="text-[12px] text-[#8892a4] font-medium mt-1 text-right">
               تأكد من صحة البيانات قبل المتابعة
             </p>
           </div>
 
-          {/* Details */}
-          <div className="px-6 pb-2 flex flex-col gap-4">
-            {/* Row: مبلغ السحب */}
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-bold text-[#1a1f3c]">
-                {formatNum(amountNum)}{" "}
-                <span className="text-[13px] font-semibold text-[#1a1f3c]">ر.س</span>
-              </span>
-              <span className="text-[13px] font-semibold text-[#5a6282]">:مبلغ السحب</span>
+          {/* Divider */}
+          <div className="h-px bg-[#f0f2f7] mx-5" />
+
+          {/* Data rows */}
+          <div className="px-6 py-5 flex flex-col gap-0">
+            {/* مبلغ السحب */}
+            <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
+              <div className="flex items-baseline gap-1" dir="ltr">
+                <span className="text-[16px] font-extrabold text-[#1a1f3c]">{formatNum(amountNum)}</span>
+                <span className="text-[12px] font-bold text-[#1a1f3c]">ر.س</span>
+              </div>
+              <span className="text-[13px] font-semibold text-[#5a6282]">مبلغ السحب :</span>
             </div>
 
-            {/* Row: رسوم السحب */}
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-bold text-[#ef4444]">
-                {formatNum(feesNum)}{" "}
-                <span className="text-[13px] font-semibold text-[#ef4444]">ر.س</span>
-              </span>
-              <span className="text-[13px] font-semibold text-[#5a6282]">:رسوم السحب</span>
+            {/* رسوم السحب */}
+            <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
+              <div className="flex items-baseline gap-1" dir="ltr">
+                <span className="text-[16px] font-extrabold text-[#ef4444]">{formatNum(feesNum)}</span>
+                <span className="text-[12px] font-bold text-[#ef4444]">ر.س</span>
+              </div>
+              <span className="text-[13px] font-semibold text-[#5a6282]">رسوم السحب :</span>
             </div>
 
-            {/* Row: المبلغ الصافي */}
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-bold text-[#16a34a]">
-                {formatNum(netAmount)}{" "}
-                <span className="text-[13px] font-semibold text-[#16a34a]">ر.س</span>
-              </span>
-              <span className="text-[13px] font-semibold text-[#5a6282]">:المبلغ الصافي</span>
+            {/* المبلغ الصافي */}
+            <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
+              <div className="flex items-baseline gap-1" dir="ltr">
+                <span className="text-[16px] font-extrabold text-[#16a34a]">{formatNum(netAmount)}</span>
+                <span className="text-[12px] font-bold text-[#16a34a]">ر.س</span>
+              </div>
+              <span className="text-[13px] font-semibold text-[#5a6282]">المبلغ الصافي :</span>
             </div>
 
-            {/* Row: رقم الإيبان */}
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-[13px] font-bold text-[#1a1f3c]" dir="ltr" style={{ textAlign: "left" }}>
+            {/* رقم الإيبان */}
+            <div className="flex items-start justify-between gap-4 py-3">
+              <span
+                className="text-[13px] font-bold text-[#1a1f3c] leading-relaxed"
+                dir="ltr"
+                style={{ textAlign: "left", letterSpacing: "0.04em" }}
+              >
                 {iban}
               </span>
-              <span className="text-[13px] font-semibold text-[#5a6282] whitespace-nowrap">:رقم الإيبان</span>
+              <span className="text-[13px] font-semibold text-[#5a6282] whitespace-nowrap mt-0.5">رقم الإيبان :</span>
             </div>
           </div>
 
           {/* Buttons */}
-          <div className="flex gap-3 px-6 py-5 mt-2">
+          <div className="flex gap-3 px-5 pb-6">
             <button
               onClick={() => setStep("form")}
-              className="flex-1 py-3 rounded-2xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[14px] hover:bg-[#f3f5fa] transition-colors"
+              className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-colors hover:bg-[#f3f5fa]"
+              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}
             >
               رجوع
             </button>
             <button
               onClick={onClose}
-              className="flex-1 py-3 rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}
+              className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}
             >
               تأكيد السحب
             </button>
@@ -300,39 +312,31 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
     );
   }
 
+  /* ── نافذة نموذج السحب ── */
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(15,20,50,0.55)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center px-5"
+      style={{ background: "rgba(10,15,40,0.6)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-md bg-white rounded-t-3xl"
+        className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
         style={{ fontFamily: "'Cairo', sans-serif" }}
+        dir="rtl"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6]">
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282] hover:bg-[#e8edf5] transition-colors"
-          >
-            <Icon.X />
-          </button>
-          <div className="flex items-center gap-2">
-            <h3 className="text-[16px] font-bold text-[#1a1f3c]">سحب الأموال</h3>
-            <span className="text-[17px]">$</span>
-          </div>
-          <div className="w-8" />
+        {/* Title */}
+        <div className="px-6 pt-7 pb-1 flex items-center justify-end gap-2">
+          <h3 className="text-[18px] font-extrabold text-[#1a1f3c]">سحب الأموال</h3>
+          <span className="text-[20px] font-black text-[#c8005a] leading-none">$</span>
         </div>
+        <p className="px-6 pb-5 text-[12px] text-[#8892a4] font-medium text-right">
+          أدخل مبلغ السحب ورقم الإيبان
+        </p>
 
-        <div className="px-5 py-5 flex flex-col gap-4">
-          <p className="text-[12px] text-[#8892a4] font-medium text-center">
-            أدخل مبلغ السحب ورقم الإيبان
-          </p>
-
+        <div className="px-6 pb-6 flex flex-col gap-4">
           {/* Amount field */}
-          <div className="text-right">
-            <label className="block text-[12px] font-bold text-[#1a1f3c] mb-1.5">
+          <div>
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">
               مبلغ السحب (ر.س)
             </label>
             <input
@@ -340,21 +344,34 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="أدخل المبلغ"
-              className="w-full px-4 py-3 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[13px] font-semibold text-right outline-none focus:border-[#c8005a] focus:ring-1 focus:ring-[#c8005a] transition-all"
+              className="w-full px-4 py-3 rounded-2xl text-[13px] font-semibold text-right outline-none transition-all"
+              style={{
+                border: "1.5px solid #e2e8f0",
+                background: "white",
+                color: "#1a1f3c",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#f0196e"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
             />
-            <p className="text-[11px] text-[#8892a4] font-medium mt-1.5 text-right">
-              الحد الأقصى: {maxAmount} ر.س
+            <p className="text-[11px] text-[#8892a4] font-medium mt-2 text-right">
+              الحد الأقصى : {maxAmount} ر.س
             </p>
           </div>
 
           {/* IBAN field */}
-          <div className="text-right">
-            <label className="block text-[12px] font-bold text-[#1a1f3c] mb-1.5">
+          <div>
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">
               رقم الإيبان
             </label>
             <div
-              className="w-full px-4 py-3 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[14px] font-bold text-center"
+              className="w-full px-4 py-3.5 rounded-2xl text-[15px] font-bold text-center"
               dir="ltr"
+              style={{
+                border: "1.5px solid #e2e8f0",
+                background: "white",
+                color: "#1a1f3c",
+                letterSpacing: "0.05em",
+              }}
             >
               {iban}
             </div>
@@ -362,29 +379,30 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
 
           {/* Fees warning */}
           <div
-            className="flex items-center justify-end gap-2 px-4 py-3 rounded-xl"
-            style={{ background: "#fffbeb", border: "1px solid #fde68a" }}
+            className="flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}
           >
+            <span className="text-[18px] leading-none">⚠️</span>
             <span className="text-[13px] font-bold text-[#92400e]">
-              ر.س {fees}  :رسوم السحب
+              رسوم السحب : {fees} ر.س
             </span>
-            <span className="text-[16px]">⚠️</span>
           </div>
 
-          {/* Buttons */}
+          {/* Buttons: متابعة on right (RTL = visually left), إلغاء on left */}
           <div className="flex gap-3 mt-1">
             <button
-              onClick={onClose}
-              className="flex-1 py-3 rounded-2xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[14px] hover:bg-[#f3f5fa] transition-colors"
-            >
-              إلغاء
-            </button>
-            <button
               onClick={() => setStep("confirm")}
-              className="flex-1 py-3 rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}
+              className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}
             >
               متابعة
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-colors hover:bg-[#f3f5fa]"
+              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}
+            >
+              إلغاء
             </button>
           </div>
         </div>
