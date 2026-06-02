@@ -212,6 +212,93 @@ function UserHeader({ onAdminClick }: { onAdminClick: () => void }) {
 
 function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void; maxAmount: string; iban: string; fees: string }) {
   const [amount, setAmount] = useState("");
+  const [step, setStep] = useState<"form" | "confirm">("form");
+
+  const feesNum = parseFloat(fees.replace(/,/g, ""));
+  const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
+  const netAmount = amountNum - feesNum;
+
+  function formatNum(n: number) {
+    return n.toLocaleString("en-US");
+  }
+
+  if (step === "confirm") {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: "rgba(15,20,50,0.55)" }}
+        onClick={(e) => e.target === e.currentTarget && onClose()}
+      >
+        <div
+          className="w-full max-w-md bg-white rounded-3xl overflow-hidden"
+          style={{ fontFamily: "'Cairo', sans-serif" }}
+        >
+          {/* Confirm header */}
+          <div className="px-6 pt-6 pb-4 text-right">
+            <h3 className="text-[18px] font-extrabold text-[#1a1f3c]">تأكيد السحب</h3>
+            <p className="text-[12px] text-[#8892a4] font-medium mt-1">
+              تأكد من صحة البيانات قبل المتابعة
+            </p>
+          </div>
+
+          {/* Details */}
+          <div className="px-6 pb-2 flex flex-col gap-4">
+            {/* Row: مبلغ السحب */}
+            <div className="flex items-center justify-between">
+              <span className="text-[15px] font-bold text-[#1a1f3c]">
+                {formatNum(amountNum)}{" "}
+                <span className="text-[13px] font-semibold text-[#1a1f3c]">ر.س</span>
+              </span>
+              <span className="text-[13px] font-semibold text-[#5a6282]">:مبلغ السحب</span>
+            </div>
+
+            {/* Row: رسوم السحب */}
+            <div className="flex items-center justify-between">
+              <span className="text-[15px] font-bold text-[#ef4444]">
+                {formatNum(feesNum)}{" "}
+                <span className="text-[13px] font-semibold text-[#ef4444]">ر.س</span>
+              </span>
+              <span className="text-[13px] font-semibold text-[#5a6282]">:رسوم السحب</span>
+            </div>
+
+            {/* Row: المبلغ الصافي */}
+            <div className="flex items-center justify-between">
+              <span className="text-[15px] font-bold text-[#16a34a]">
+                {formatNum(netAmount)}{" "}
+                <span className="text-[13px] font-semibold text-[#16a34a]">ر.س</span>
+              </span>
+              <span className="text-[13px] font-semibold text-[#5a6282]">:المبلغ الصافي</span>
+            </div>
+
+            {/* Row: رقم الإيبان */}
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-[13px] font-bold text-[#1a1f3c]" dir="ltr" style={{ textAlign: "left" }}>
+                {iban}
+              </span>
+              <span className="text-[13px] font-semibold text-[#5a6282] whitespace-nowrap">:رقم الإيبان</span>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-3 px-6 py-5 mt-2">
+            <button
+              onClick={() => setStep("form")}
+              className="flex-1 py-3 rounded-2xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[14px] hover:bg-[#f3f5fa] transition-colors"
+            >
+              رجوع
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}
+            >
+              تأكيد السحب
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -293,6 +380,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               إلغاء
             </button>
             <button
+              onClick={() => setStep("confirm")}
               className="flex-1 py-3 rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
               style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}
             >
