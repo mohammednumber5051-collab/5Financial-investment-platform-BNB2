@@ -14,6 +14,11 @@ interface User {
   status: "active" | "disabled";
 }
 
+type View =
+  | { page: "login" }
+  | { page: "admin" }
+  | { page: "user"; userId: string };
+
 /* ─── Mock Data ─────────────────────────────────────────────── */
 const initialUsers: User[] = [
   {
@@ -54,29 +59,8 @@ const initialUsers: User[] = [
   },
 ];
 
-const currentUser = {
-  name: "عبدالرحمن سعيد يحيى ال فروان",
-  currency: "الريال السعودي (ر.س)",
-};
-
-const currentAccountData = {
-  profits: { amount: "17,400", label: "أرباح الاشتراك", sub: "متاح للسحب الفوري", pct: "12.5%+" },
-  subscription: { amount: "1,000", label: "مبلغ الاشتراك", sub: "اشتراك نشط" },
-  fees: { amount: "3,610", label: "رسوم السحب", sub: "مطلوبة لكل عملية سحب" },
-  bank: {
-    holder: "عبدالرحمن سعيد يحيى ال فروان",
-    iban: "SA15 8000 0220 6080 1030 8884",
-    sub: "حساب بنكي مربوط",
-  },
-};
-
-const accountInfoFields = [
-  { label: "اسم العميل", value: "عبدالرحمن سعيد يحيى ال فروان" },
-  { label: "رقم الهوية", value: "1082XXXXXXXX" },
-  { label: "البريد الإلكتروني", value: "abdulrahman@example.com" },
-  { label: "رقم الجوال", value: "+966 5X XXX XXXX" },
-  { label: "تاريخ الانضمام", value: "15 يناير 2025" },
-];
+const ADMIN_USERNAME = "Assubaihi";
+const ADMIN_PASSWORD = "admin123";
 
 /* ─── SVG Icons ──────────────────────────────────────────────── */
 const Icon = {
@@ -144,11 +128,6 @@ const Icon = {
       <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   ),
-  Admin: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  ),
   X: () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -157,6 +136,18 @@ const Icon = {
   CheckCircle: () => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  ),
+  Lock: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  ),
+  User: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   ),
 };
@@ -171,46 +162,161 @@ function CardIconBtn({ children, bg = "rgba(255,255,255,0.25)" }: { children: Re
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   USER DASHBOARD
+   LOGIN PAGE
 ═══════════════════════════════════════════════════════════════ */
+function LoginPage({ onLogin }: { onLogin: (view: View) => void; users: User[] }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-function UserHeader({ onAdminClick }: { onAdminClick: () => void }) {
+  function handleLogin() {
+    setError("");
+    if (!username.trim() || !password.trim()) {
+      setError("يرجى إدخال اسم المستخدم وكلمة المرور");
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        onLogin({ page: "admin" });
+        return;
+      }
+      const found = initialUsers.find(
+        (u) => u.username === username && u.password === password
+      );
+      if (found) {
+        onLogin({ page: "user", userId: found.id });
+        return;
+      }
+      setError("اسم المستخدم أو كلمة المرور غير صحيحة");
+    }, 600);
+  }
+
   return (
-    <div className="px-4 pt-5 pb-4">
-      <div className="flex items-start justify-between">
-        <div className="text-right">
-          <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">
-            المنصة المالية
-          </h1>
-          <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">
-            مرحباً، {currentUser.name}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex items-center gap-2 flex-row-reverse">
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-              {currentUser.currency}
-            </button>
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-              <Icon.Logout />
-              <span>تسجيل الخروج</span>
-            </button>
+    <div
+      className="min-h-screen flex items-center justify-center px-5"
+      style={{
+        background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+        fontFamily: "'Cairo', sans-serif",
+      }}
+      dir="rtl"
+    >
+      {/* Background circles */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.3)" }} />
+        <div className="absolute -bottom-16 -left-16 w-64 h-64 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.2)" }} />
+        <div className="absolute top-1/2 left-1/4 w-40 h-40 rounded-full opacity-5" style={{ background: "rgba(255,255,255,0.4)" }} />
+      </div>
+
+      <div className="w-full max-w-sm relative z-10">
+        {/* Logo / Title */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.25)" }}>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
           </div>
+          <h1 className="text-[24px] font-extrabold text-white leading-tight">المنصة المالية</h1>
+          <p className="text-white/60 text-[13px] font-medium mt-1">سجّل دخولك للمتابعة</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white rounded-3xl p-6 shadow-2xl">
+          <h2 className="text-[17px] font-extrabold text-[#1a1f3c] text-center mb-6">تسجيل الدخول</h2>
+
+          {/* Error message */}
+          {error && (
+            <div className="mb-4 px-4 py-3 rounded-2xl text-center text-[12px] font-bold"
+              style={{ background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca" }}>
+              {error}
+            </div>
+          )}
+
+          {/* Username */}
+          <div className="mb-4">
+            <label className="block text-[12px] font-bold text-[#5a6282] mb-2 text-right">اسم المستخدم</label>
+            <div className="relative">
+              <div className="absolute top-1/2 -translate-y-1/2 right-3 text-[#8892a4]">
+                <Icon.User />
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="أدخل اسم المستخدم"
+                className="w-full pl-4 pr-11 py-3 rounded-2xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none transition-all"
+                style={{ direction: "ltr", textAlign: "right" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(41,82,227,0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div className="mb-6">
+            <label className="block text-[12px] font-bold text-[#5a6282] mb-2 text-right">كلمة المرور</label>
+            <div className="relative">
+              <div className="absolute top-1/2 -translate-y-1/2 right-3 text-[#8892a4]">
+                <Icon.Lock />
+              </div>
+              <input
+                type={showPass ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="أدخل كلمة المرور"
+                className="w-full pl-10 pr-11 py-3 rounded-2xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none transition-all"
+                style={{ direction: "ltr", textAlign: "right" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(41,82,227,0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute top-1/2 -translate-y-1/2 left-3 text-[#8892a4] hover:text-[#5a6282] transition-colors"
+              >
+                {showPass ? <Icon.EyeOff /> : <Icon.Eye />}
+              </button>
+            </div>
+          </div>
+
+          {/* Login button */}
           <button
-            onClick={onAdminClick}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold shadow-sm transition-colors"
-            style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)", color: "white" }}
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full py-3.5 rounded-2xl text-white font-bold text-[15px] shadow-lg transition-opacity active:opacity-90 disabled:opacity-70"
+            style={{ background: "linear-gradient(135deg,#2952e3 0%,#7c3aed 100%)" }}
           >
-            <Icon.Admin />
-            <span>لوحة الإدارة</span>
+            {loading ? "جارٍ التحقق..." : "تسجيل الدخول"}
           </button>
         </div>
+
+        <p className="text-center text-white/40 text-[11px] font-medium mt-6">
+          المنصة المالية © 2025
+        </p>
       </div>
     </div>
   );
 }
 
-function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void; maxAmount: string; iban: string; fees: string }) {
+/* ═══════════════════════════════════════════════════════════════
+   USER DASHBOARD
+═══════════════════════════════════════════════════════════════ */
+
+function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
+  onClose: () => void;
+  maxAmount: string;
+  iban: string;
+  fees: string;
+  userName: string;
+}) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
   const [submitTime, setSubmitTime] = useState("");
@@ -223,35 +329,19 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
     return n.toLocaleString("en-US");
   }
 
-  /* ── نافذة تأكيد السحب ── */
   if (step === "confirm") {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center px-5"
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
         style={{ background: "rgba(10,15,40,0.6)" }}
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <div
-          className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
-          style={{ fontFamily: "'Cairo', sans-serif" }}
-          dir="rtl"
-        >
-          {/* Header */}
+        onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+          style={{ fontFamily: "'Cairo', sans-serif" }} dir="rtl">
           <div className="px-6 pt-7 pb-5">
-            <h3 className="text-[19px] font-extrabold text-[#1a1f3c] text-right leading-snug">
-              تأكيد السحب
-            </h3>
-            <p className="text-[12px] text-[#8892a4] font-medium mt-1 text-right">
-              تأكد من صحة البيانات قبل المتابعة
-            </p>
+            <h3 className="text-[19px] font-extrabold text-[#1a1f3c] text-right leading-snug">تأكيد السحب</h3>
+            <p className="text-[12px] text-[#8892a4] font-medium mt-1 text-right">تأكد من صحة البيانات قبل المتابعة</p>
           </div>
-
-          {/* Divider */}
           <div className="h-px bg-[#f0f2f7] mx-5" />
-
-          {/* Data rows */}
           <div className="px-6 py-5 flex flex-col gap-0">
-            {/* مبلغ السحب */}
             <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
               <div className="flex items-baseline gap-1" dir="ltr">
                 <span className="text-[16px] font-extrabold text-[#1a1f3c]">{formatNum(amountNum)}</span>
@@ -259,8 +349,6 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               </div>
               <span className="text-[13px] font-semibold text-[#5a6282]">مبلغ السحب :</span>
             </div>
-
-            {/* رسوم السحب */}
             <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
               <div className="flex items-baseline gap-1" dir="ltr">
                 <span className="text-[16px] font-extrabold text-[#ef4444]">{formatNum(feesNum)}</span>
@@ -268,8 +356,6 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               </div>
               <span className="text-[13px] font-semibold text-[#5a6282]">رسوم السحب :</span>
             </div>
-
-            {/* المبلغ الصافي */}
             <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
               <div className="flex items-baseline gap-1" dir="ltr">
                 <span className="text-[16px] font-extrabold text-[#16a34a]">{formatNum(netAmount)}</span>
@@ -277,27 +363,17 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               </div>
               <span className="text-[13px] font-semibold text-[#5a6282]">المبلغ الصافي :</span>
             </div>
-
-            {/* رقم الإيبان */}
             <div className="flex items-start justify-between gap-4 py-3">
-              <span
-                className="text-[13px] font-bold text-[#1a1f3c] leading-relaxed"
-                dir="ltr"
-                style={{ textAlign: "left", letterSpacing: "0.04em" }}
-              >
+              <span className="text-[13px] font-bold text-[#1a1f3c] leading-relaxed" dir="ltr" style={{ textAlign: "left", letterSpacing: "0.04em" }}>
                 {iban}
               </span>
               <span className="text-[13px] font-semibold text-[#5a6282] whitespace-nowrap mt-0.5">رقم الإيبان :</span>
             </div>
           </div>
-
-          {/* Buttons */}
           <div className="flex gap-3 px-5 pb-6">
-            <button
-              onClick={() => setStep("form")}
+            <button onClick={() => setStep("form")}
               className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-colors hover:bg-[#f3f5fa]"
-              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}
-            >
+              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}>
               رجوع
             </button>
             <button
@@ -312,8 +388,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
                 setStep("result");
               }}
               className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}
-            >
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}>
               تأكيد السحب
             </button>
           </div>
@@ -322,21 +397,13 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
     );
   }
 
-  /* ── نافذة فشل السحب ── */
   if (step === "result") {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center px-5"
-        style={{ background: "rgba(10,15,40,0.6)" }}
-      >
-        <div
-          className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
-          style={{ fontFamily: "'Cairo', sans-serif" }}
-          dir="rtl"
-        >
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
+        style={{ background: "rgba(10,15,40,0.6)" }}>
+        <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+          style={{ fontFamily: "'Cairo', sans-serif" }} dir="rtl">
           <div className="px-6 pt-7 pb-6 flex flex-col gap-5">
-
-            {/* Title */}
             <div className="text-right">
               <div className="flex items-center justify-end gap-2 mb-1">
                 <h3 className="text-[18px] font-extrabold text-[#dc2626]">فشل في السحب</h3>
@@ -344,20 +411,13 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               </div>
               <p className="text-[12px] text-[#8892a4] font-medium">لم يتم إتمام عملية السحب</p>
             </div>
-
-            {/* Failure reason box */}
-            <div
-              className="rounded-2xl p-4 text-right"
-              style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}
-            >
+            <div className="rounded-2xl p-4 text-right" style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}>
               <p className="text-[13px] font-extrabold text-[#1a1f3c] mb-2">سبب الفشل:</p>
               <p className="text-[13px] font-medium text-[#374151] leading-relaxed">
-                عزيز العميل / {currentUser.name} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة{" "}
+                عزيز العميل / {userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة{" "}
                 <span className="font-extrabold text-[#dc2626]">{fees}</span> ريال بعد السداد يتم التحويل ارباحك بنجاح ✅
               </p>
             </div>
-
-            {/* Attempt details */}
             <div className="text-right">
               <p className="text-[13px] font-extrabold text-[#1a1f3c] mb-3">تفاصيل المحاولة:</p>
               <div className="flex flex-col gap-2">
@@ -377,112 +437,60 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
                 </div>
               </div>
             </div>
-
-            {/* Close button */}
-            <button
-              onClick={onClose}
+            <button onClick={onClose}
               className="w-full py-4 rounded-2xl text-white font-bold text-[15px] mt-1 active:opacity-90 transition-opacity"
-              style={{ background: "#111827" }}
-            >
+              style={{ background: "#111827" }}>
               إغلاق
             </button>
-
           </div>
         </div>
       </div>
     );
   }
 
-  /* ── نافذة نموذج السحب ── */
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-5"
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
       style={{ background: "rgba(10,15,40,0.6)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
-        style={{ fontFamily: "'Cairo', sans-serif" }}
-        dir="rtl"
-      >
-        {/* Title */}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+        style={{ fontFamily: "'Cairo', sans-serif" }} dir="rtl">
         <div className="px-6 pt-7 pb-1 flex items-center justify-end gap-2">
           <h3 className="text-[18px] font-extrabold text-[#1a1f3c]">سحب الأموال</h3>
           <span className="text-[20px] font-black text-[#c8005a] leading-none">$</span>
         </div>
-        <p className="px-6 pb-5 text-[12px] text-[#8892a4] font-medium text-right">
-          أدخل مبلغ السحب ورقم الإيبان
-        </p>
-
+        <p className="px-6 pb-5 text-[12px] text-[#8892a4] font-medium text-right">أدخل مبلغ السحب ورقم الإيبان</p>
         <div className="px-6 pb-6 flex flex-col gap-4">
-          {/* Amount field */}
           <div>
-            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">
-              مبلغ السحب (ر.س)
-            </label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">مبلغ السحب (ر.س)</label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
               placeholder="أدخل المبلغ"
               className="w-full px-4 py-3 rounded-2xl text-[13px] font-semibold text-right outline-none transition-all"
-              style={{
-                border: "1.5px solid #e2e8f0",
-                background: "white",
-                color: "#1a1f3c",
-              }}
+              style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#1a1f3c" }}
               onFocus={(e) => { e.currentTarget.style.borderColor = "#f0196e"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
-            />
-            <p className="text-[11px] text-[#8892a4] font-medium mt-2 text-right">
-              الحد الأقصى : {maxAmount} ر.س
-            </p>
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }} />
+            <p className="text-[11px] text-[#8892a4] font-medium mt-2 text-right">الحد الأقصى : {maxAmount} ر.س</p>
           </div>
-
-          {/* IBAN field */}
           <div>
-            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">
-              رقم الإيبان
-            </label>
-            <div
-              className="w-full px-4 py-3.5 rounded-2xl text-[15px] font-bold text-center"
-              dir="ltr"
-              style={{
-                border: "1.5px solid #e2e8f0",
-                background: "white",
-                color: "#1a1f3c",
-                letterSpacing: "0.05em",
-              }}
-            >
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">رقم الإيبان</label>
+            <div className="w-full px-4 py-3.5 rounded-2xl text-[15px] font-bold text-center" dir="ltr"
+              style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#1a1f3c", letterSpacing: "0.05em" }}>
               {iban}
             </div>
           </div>
-
-          {/* Fees warning */}
-          <div
-            className="flex items-center justify-between px-4 py-3 rounded-2xl"
-            style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}
-          >
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}>
             <span className="text-[18px] leading-none">⚠️</span>
-            <span className="text-[13px] font-bold text-[#92400e]">
-              رسوم السحب : {fees} ر.س
-            </span>
+            <span className="text-[13px] font-bold text-[#92400e]">رسوم السحب : {fees} ر.س</span>
           </div>
-
-          {/* Buttons: متابعة on right (RTL = visually left), إلغاء on left */}
           <div className="flex gap-3 mt-1">
-            <button
-              onClick={() => setStep("confirm")}
+            <button onClick={() => setStep("confirm")}
               className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}
-            >
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}>
               متابعة
             </button>
-            <button
-              onClick={onClose}
+            <button onClick={onClose}
               className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-colors hover:bg-[#f3f5fa]"
-              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}
-            >
+              style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}>
               إلغاء
             </button>
           </div>
@@ -492,168 +500,146 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
   );
 }
 
-function FinancialOperations({ onWithdrawClick }: { onWithdrawClick: () => void }) {
-  return (
-    <section className="px-4">
-      <h2 className="text-[15px] font-bold text-[#1a1f3c] mb-3.5 text-right">العمليات المالية</h2>
-      <div className="flex flex-col gap-3">
-        <button
-          onClick={onWithdrawClick}
-          className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
-          style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}>
-          <Icon.ArrowLeft /><span>سحب الأموال</span>
-        </button>
-        <button className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
-          style={{ background: "linear-gradient(135deg,#0f7a38 0%,#16a34a 50%,#22c55e 100%)" }}>
-          <Icon.Plus /><span>إيداع الأموال</span>
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function GreenProfitCard() {
-  return (
-    <div className="rounded-3xl p-5 relative overflow-hidden"
-      style={{ background: "linear-gradient(135deg,#0b7a44 0%,#0fa558 40%,#14c46a 70%,#2dd87e 100%)" }}>
-      <div className="absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-20" style={{ background: "rgba(255,255,255,0.3)" }} />
-      <div className="absolute -top-10 right-1/3 w-28 h-28 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-      <div className="flex items-start justify-between mb-7 relative z-10">
-        <CardIconBtn><Icon.TrendingUp /></CardIconBtn>
-        <span className="bg-white/25 text-white text-[10px] font-bold px-3 py-1 rounded-lg">{currentAccountData.profits.pct}</span>
-      </div>
-      <div className="text-right relative z-10">
-        <p className="text-white/80 text-[11px] font-medium mb-1">{currentAccountData.profits.label}</p>
-        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-          {currentAccountData.profits.amount} <span className="text-[19px]">ر.س</span>
-        </p>
-        <p className="text-white/70 text-[11px] font-medium mt-2">{currentAccountData.profits.sub}</p>
-      </div>
-    </div>
-  );
-}
-
-function BlueSubscriptionCard() {
-  return (
-    <div className="rounded-3xl p-5 relative overflow-hidden"
-      style={{ background: "linear-gradient(135deg,#2952e3 0%,#4f46e5 40%,#7c3aed 100%)" }}>
-      <div className="absolute -bottom-10 -right-6 w-40 h-40 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.5)" }} />
-      <div className="flex items-start justify-between mb-7 relative z-10">
-        <CardIconBtn bg="rgba(255,255,255,0.22)"><Icon.Dollar /></CardIconBtn>
-        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 block shadow-sm shadow-emerald-300 mt-1" />
-      </div>
-      <div className="text-right relative z-10">
-        <p className="text-white/80 text-[11px] font-medium mb-1">{currentAccountData.subscription.label}</p>
-        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-          {currentAccountData.subscription.amount} <span className="text-[19px]">ر.س</span>
-        </p>
-        <p className="text-white/70 text-[11px] font-medium mt-2">{currentAccountData.subscription.sub}</p>
-      </div>
-    </div>
-  );
-}
-
-function RedFeesCard() {
-  return (
-    <div className="rounded-3xl p-5 relative overflow-hidden"
-      style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
-      <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-      <div className="flex items-start justify-between mb-7 relative z-10">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-          style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
-          <Icon.AlertCircle />
-        </div>
-        <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-          style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
-      </div>
-      <div className="text-right relative z-10">
-        <p className="text-white/80 text-[11px] font-medium mb-1">{currentAccountData.fees.label}</p>
-        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-          {currentAccountData.fees.amount} <span className="text-[19px]">ر.س</span>
-        </p>
-        <p className="text-white/70 text-[11px] font-medium mt-2">{currentAccountData.fees.sub}</p>
-      </div>
-    </div>
-  );
-}
-
-function PurpleBankCard() {
-  return (
-    <div className="rounded-3xl p-5 relative overflow-hidden"
-      style={{ background: "linear-gradient(135deg,#5b21b6 0%,#7c3aed 40%,#9333ea 80%,#a855f7 100%)" }}>
-      <div className="absolute -bottom-10 -right-8 w-44 h-44 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.5)" }} />
-      <div className="flex items-start justify-between mb-5 relative z-10">
-        <CardIconBtn bg="rgba(255,255,255,0.22)"><Icon.CreditCard /></CardIconBtn>
-        <div className="flex items-center gap-1.5">
-          <span className="text-white/80 text-[11px] font-semibold">متصل</span>
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 block" />
-        </div>
-      </div>
-      <div className="text-right relative z-10 space-y-3.5">
-        <div>
-          <p className="text-white/60 text-[10px] font-medium mb-0.5">اسم صاحب الحساب</p>
-          <p className="text-white font-bold text-[17px] leading-snug">{currentAccountData.bank.holder}</p>
-        </div>
-        <div>
-          <p className="text-white/60 text-[10px] font-medium mb-1">رقم الإيبان</p>
-          <p className="text-white font-bold text-[15px] leading-snug" dir="ltr" style={{ textAlign: "right", letterSpacing: "0.07em" }}>
-            {currentAccountData.bank.iban}
-          </p>
-        </div>
-        <p className="text-white/60 text-[10px] font-medium">{currentAccountData.bank.sub}</p>
-      </div>
-    </div>
-  );
-}
-
-function AccountInfoSection() {
-  return (
-    <section className="px-4 pb-8">
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-[#e2e8f0]">
-        <div className="text-right mb-5">
-          <h2 className="text-[17px] font-bold text-[#1a1f3c]">معلومات الحساب</h2>
-          <p className="text-[11px] text-[#8892a4] mt-0.5 font-medium">تفاصيل حسابك الشخصي</p>
-        </div>
-        <div className="flex flex-col gap-4">
-          {accountInfoFields.map((f) => (
-            <div key={f.label} className="text-right">
-              <label className="block text-[10px] font-semibold text-[#8892a4] mb-1.5">{f.label}</label>
-              <div className="w-full px-4 py-2.5 rounded-xl bg-[#f3f5fa] border border-[#e2e8f0] text-[#1a1f3c] font-semibold text-[12px] text-right">
-                {f.value}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function UserDashboard({ onAdminClick }: { onAdminClick: () => void }) {
+function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
 
   return (
     <div className="max-w-md mx-auto">
-      <UserHeader onAdminClick={onAdminClick} />
-      <main className="flex flex-col gap-5 pb-2">
-        <FinancialOperations onWithdrawClick={() => setShowWithdraw(true)} />
+      {/* Header */}
+      <div className="px-4 pt-5 pb-4">
+        <div className="flex items-start justify-between">
+          <div className="text-right">
+            <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">المنصة المالية</h1>
+            <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">مرحباً، {user.name}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-row-reverse">
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
+              الريال السعودي (ر.س)
+            </button>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
+              <Icon.Logout />
+              <span>تسجيل الخروج</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <main className="flex flex-col gap-5 pb-8">
+        {/* Financial Operations */}
+        <section className="px-4">
+          <h2 className="text-[15px] font-bold text-[#1a1f3c] mb-3.5 text-right">العمليات المالية</h2>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => setShowWithdraw(true)}
+              className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}>
+              <Icon.ArrowLeft /><span>سحب الأموال</span>
+            </button>
+            <button className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#0f7a38 0%,#16a34a 50%,#22c55e 100%)" }}>
+              <Icon.Plus /><span>إيداع الأموال</span>
+            </button>
+          </div>
+        </section>
+
+        {/* Account Overview */}
         <section className="px-4">
           <h2 className="text-[15px] font-bold text-[#1a1f3c] mb-4 text-right">نظرة عامة على الحساب</h2>
           <div className="flex flex-col gap-4">
-            <GreenProfitCard />
-            <BlueSubscriptionCard />
-            <RedFeesCard />
-            <PurpleBankCard />
+            {/* Profits */}
+            <div className="rounded-3xl p-5 relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg,#0b7a44 0%,#0fa558 40%,#14c46a 70%,#2dd87e 100%)" }}>
+              <div className="absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-20" style={{ background: "rgba(255,255,255,0.3)" }} />
+              <div className="flex items-start justify-between mb-7 relative z-10">
+                <CardIconBtn><Icon.TrendingUp /></CardIconBtn>
+                <span className="bg-white/25 text-white text-[10px] font-bold px-3 py-1 rounded-lg">12.5%+</span>
+              </div>
+              <div className="text-right relative z-10">
+                <p className="text-white/80 text-[11px] font-medium mb-1">أرباح الاشتراك</p>
+                <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                  {user.profits} <span className="text-[19px]">ر.س</span>
+                </p>
+                <p className="text-white/70 text-[11px] font-medium mt-2">متاح للسحب الفوري</p>
+              </div>
+            </div>
+
+            {/* Subscription */}
+            <div className="rounded-3xl p-5 relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg,#2952e3 0%,#4f46e5 40%,#7c3aed 100%)" }}>
+              <div className="absolute -bottom-10 -right-6 w-40 h-40 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.5)" }} />
+              <div className="flex items-start justify-between mb-7 relative z-10">
+                <CardIconBtn bg="rgba(255,255,255,0.22)"><Icon.Dollar /></CardIconBtn>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 block shadow-sm shadow-emerald-300 mt-1" />
+              </div>
+              <div className="text-right relative z-10">
+                <p className="text-white/80 text-[11px] font-medium mb-1">مبلغ الاشتراك</p>
+                <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                  {user.subscription} <span className="text-[19px]">ر.س</span>
+                </p>
+                <p className="text-white/70 text-[11px] font-medium mt-2">اشتراك نشط</p>
+              </div>
+            </div>
+
+            {/* Fees */}
+            <div className="rounded-3xl p-5 relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
+              <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+              <div className="flex items-start justify-between mb-7 relative z-10">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                  style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                  <Icon.AlertCircle />
+                </div>
+                <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                  style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
+              </div>
+              <div className="text-right relative z-10">
+                <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
+                <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                  {user.fees} <span className="text-[19px]">ر.س</span>
+                </p>
+                <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لكل عملية سحب</p>
+              </div>
+            </div>
+
+            {/* Bank Card */}
+            <div className="rounded-3xl p-5 relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg,#5b21b6 0%,#7c3aed 40%,#9333ea 80%,#a855f7 100%)" }}>
+              <div className="absolute -bottom-10 -right-8 w-44 h-44 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.5)" }} />
+              <div className="flex items-start justify-between mb-5 relative z-10">
+                <CardIconBtn bg="rgba(255,255,255,0.22)"><Icon.CreditCard /></CardIconBtn>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-white/80 text-[11px] font-semibold">متصل</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 block" />
+                </div>
+              </div>
+              <div className="text-right relative z-10 space-y-3.5">
+                <div>
+                  <p className="text-white/60 text-[10px] font-medium mb-0.5">اسم صاحب الحساب</p>
+                  <p className="text-white font-bold text-[17px] leading-snug">{user.accountHolder}</p>
+                </div>
+                <div>
+                  <p className="text-white/60 text-[10px] font-medium mb-1">رقم الإيبان</p>
+                  <p className="text-white font-bold text-[15px] leading-snug" dir="ltr"
+                    style={{ textAlign: "right", letterSpacing: "0.07em" }}>
+                    {user.iban}
+                  </p>
+                </div>
+                <p className="text-white/60 text-[10px] font-medium">حساب بنكي مربوط</p>
+              </div>
+            </div>
           </div>
         </section>
-        <AccountInfoSection />
       </main>
+
       {showWithdraw && (
         <WithdrawModal
           onClose={() => setShowWithdraw(false)}
-          maxAmount={currentAccountData.profits.amount}
-          iban={currentAccountData.bank.iban}
-          fees={currentAccountData.fees.amount}
+          maxAmount={user.profits}
+          iban={user.iban}
+          fees={user.fees}
+          userName={user.name}
         />
       )}
     </div>
@@ -661,7 +647,7 @@ function UserDashboard({ onAdminClick }: { onAdminClick: () => void }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ADMIN DASHBOARD
+   ADMIN DASHBOARD (BENEFICIARIES)
 ═══════════════════════════════════════════════════════════════ */
 
 const emptyUser: Omit<User, "id"> = {
@@ -669,8 +655,8 @@ const emptyUser: Omit<User, "id"> = {
   password: "",
   name: "",
   profits: "",
-  subscription: "1,000",
-  fees: "3,610",
+  subscription: "",
+  fees: "",
   accountHolder: "",
   iban: "",
   status: "active",
@@ -696,12 +682,12 @@ function UserFormModal({
 
   const fields: { key: keyof Omit<User, "id" | "status">; label: string; placeholder: string; ltr?: boolean }[] = [
     { key: "username", label: "اسم المستخدم", placeholder: "username" },
-    { key: "name", label: "الاسم الكامل", placeholder: "عبدالرحمن سعيد..." },
-    { key: "profits", label: "أرباح الاشتراك (ر.س)", placeholder: "17,400" },
-    { key: "subscription", label: "مبلغ الاشتراك (ر.س)", placeholder: "1,000" },
-    { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
-    { key: "accountHolder", label: "اسم صاحب الحساب", placeholder: "الاسم الكامل" },
+    { key: "name", label: "اسم المستفيد الكامل", placeholder: "عبدالرحمن سعيد..." },
+    { key: "accountHolder", label: "اسم صاحب الحساب البنكي", placeholder: "الاسم الكامل" },
     { key: "iban", label: "رقم الإيبان", placeholder: "SA15 8000...", ltr: true },
+    { key: "subscription", label: "مبلغ الاشتراك (ر.س)", placeholder: "1,000" },
+    { key: "profits", label: "أرباح الاشتراك (ر.س)", placeholder: "17,400" },
+    { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
   ];
 
   return (
@@ -709,19 +695,18 @@ function UserFormModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-md bg-white rounded-t-3xl max-h-[92vh] overflow-y-auto"
         style={{ fontFamily: "'Cairo', sans-serif" }}>
-        {/* Modal header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6] sticky top-0 bg-white z-10 rounded-t-3xl">
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282] hover:bg-[#e8edf5] transition-colors">
             <Icon.X />
           </button>
           <h3 className="text-[15px] font-bold text-[#1a1f3c]">
-            {mode === "create" ? "إضافة مستخدم جديد" : "تعديل بيانات المستخدم"}
+            {mode === "create" ? "إضافة مستفيد جديد" : "تعديل بيانات المستفيد"}
           </h3>
           <div className="w-8" />
         </div>
 
-        <div className="px-5 py-5 flex flex-col gap-4">
-          {/* Password field (special) */}
+        <div className="px-5 py-5 flex flex-col gap-4" dir="rtl">
+          {/* Password field */}
           <div className="text-right">
             <label className="block text-[11px] font-bold text-[#5a6282] mb-1.5">كلمة المرور</label>
             <div className="relative">
@@ -739,7 +724,6 @@ function UserFormModal({
             </div>
           </div>
 
-          {/* Other fields */}
           {fields.map((f) => (
             <div key={f.key} className="text-right">
               <label className="block text-[11px] font-bold text-[#5a6282] mb-1.5">{f.label}</label>
@@ -755,7 +739,7 @@ function UserFormModal({
             </div>
           ))}
 
-          {/* Status toggle */}
+          {/* Status */}
           <div className="text-right">
             <label className="block text-[11px] font-bold text-[#5a6282] mb-2">حالة الحساب</label>
             <div className="flex gap-2 justify-end">
@@ -773,11 +757,10 @@ function UserFormModal({
             </div>
           </div>
 
-          {/* Save button */}
           <button onClick={() => onSave(form)}
             className="w-full py-3.5 rounded-2xl text-white font-bold text-[14px] mt-2 transition-opacity active:opacity-90"
             style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)" }}>
-            {mode === "create" ? "إضافة المستخدم" : "حفظ التعديلات"}
+            {mode === "create" ? "إضافة المستفيد" : "حفظ التعديلات"}
           </button>
         </div>
       </div>
@@ -811,8 +794,17 @@ type ModalState =
   | { type: "delete"; userId: string }
   | { type: "disable"; userId: string };
 
-function AdminDashboard({ onBack }: { onBack: () => void }) {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+function AdminDashboard({
+  users,
+  setUsers,
+  onLogout,
+  onViewUser,
+}: {
+  users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  onLogout: () => void;
+  onViewUser: (userId: string) => void;
+}) {
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [showPassId, setShowPassId] = useState<string | null>(null);
 
@@ -845,26 +837,26 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="max-w-md mx-auto min-h-screen pb-10" dir="rtl">
-      {/* Admin Header */}
+      {/* Header */}
       <div className="px-4 pt-5 pb-4">
         <div className="flex items-center justify-between">
-          <button onClick={onBack}
+          <button onClick={onLogout}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-            <Icon.ArrowLeft />
-            <span>رجوع</span>
+            <Icon.Logout />
+            <span>خروج</span>
           </button>
           <div className="text-right">
-            <h1 className="text-[19px] font-extrabold text-[#1a1f3c]">لوحة الإدارة</h1>
-            <p className="text-[11px] text-[#5a6282] font-medium">إدارة حسابات المستخدمين</p>
+            <h1 className="text-[19px] font-extrabold text-[#1a1f3c]">قائمة المستفيدين</h1>
+            <p className="text-[11px] text-[#5a6282] font-medium">مرحباً، {ADMIN_USERNAME}</p>
           </div>
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="px-4 mb-5">
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "إجمالي المستخدمين", value: users.length, color: "#2952e3" },
+            { label: "إجمالي المستفيدين", value: users.length, color: "#2952e3" },
             { label: "حسابات نشطة", value: users.filter((u) => u.status === "active").length, color: "#16a34a" },
             { label: "حسابات معطّلة", value: users.filter((u) => u.status === "disabled").length, color: "#ef4444" },
           ].map((s) => (
@@ -876,38 +868,44 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {/* Section header + Add button */}
+      {/* Section header */}
       <div className="px-4 flex items-center justify-between mb-4">
         <button onClick={() => setModal({ type: "create" })}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-[12px] font-bold shadow-md transition-opacity active:opacity-90"
           style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
           <Icon.Plus />
-          <span>إضافة مستخدم</span>
+          <span>إضافة مستفيد</span>
         </button>
-        <h2 className="text-[15px] font-bold text-[#1a1f3c]">المستخدمون</h2>
+        <h2 className="text-[15px] font-bold text-[#1a1f3c]">المستفيدون</h2>
       </div>
 
-      {/* User Cards */}
+      {/* Beneficiary Cards */}
       <div className="px-4 flex flex-col gap-4">
         {users.map((user) => (
           <div key={user.id} className="bg-white rounded-3xl border border-[#e2e8f0] shadow-sm overflow-hidden">
-            {/* Card top gradient bar */}
             <div className="h-1.5 w-full"
               style={{ background: user.status === "active" ? "linear-gradient(90deg,#2952e3,#7c3aed)" : "#d1d5db" }} />
 
             <div className="p-4">
-              {/* User identity row */}
+              {/* Identity row — name is clickable */}
               <div className="flex items-start justify-between mb-4">
                 <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${user.status === "active" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
                   {user.status === "active" ? "نشط" : "معطّل"}
                 </span>
                 <div className="text-right">
-                  <p className="text-[14px] font-bold text-[#1a1f3c] leading-snug">{user.name}</p>
-                  <p className="text-[11px] text-[#8892a4] font-medium mt-0.5" dir="ltr" style={{ textAlign: "right" }}>@{user.username}</p>
+                  <button
+                    onClick={() => onViewUser(user.id)}
+                    className="text-[14px] font-bold text-[#2952e3] leading-snug hover:underline text-right"
+                  >
+                    {user.name}
+                  </button>
+                  <p className="text-[11px] text-[#8892a4] font-medium mt-0.5" dir="ltr" style={{ textAlign: "right" }}>
+                    @{user.username}
+                  </p>
                 </div>
               </div>
 
-              {/* Password row */}
+              {/* Password */}
               <div className="mb-4 text-right">
                 <label className="block text-[10px] font-bold text-[#8892a4] mb-1">كلمة المرور</label>
                 <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f8f9fc] border border-[#e8eaf0]">
@@ -921,7 +919,7 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
                 </div>
               </div>
 
-              {/* Financial data grid */}
+              {/* Financial grid */}
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {[
                   { label: "أرباح الاشتراك", value: user.profits, color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
@@ -937,7 +935,7 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
 
               {/* Bank info */}
               <div className="rounded-2xl p-3.5 text-right mb-4"
-                style={{ background: "linear-gradient(135deg,#5b21b6,#7c3aed)", }}>
+                style={{ background: "linear-gradient(135deg,#5b21b6,#7c3aed)" }}>
                 <p className="text-white/60 text-[9px] font-medium mb-0.5">اسم صاحب الحساب</p>
                 <p className="text-white font-bold text-[12px] leading-snug mb-2">{user.accountHolder}</p>
                 <p className="text-white/60 text-[9px] font-medium mb-0.5">رقم الإيبان</p>
@@ -974,8 +972,8 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
 
         {users.length === 0 && (
           <div className="text-center py-16 text-[#8892a4]">
-            <p className="text-[13px] font-semibold">لا يوجد مستخدمون حتى الآن</p>
-            <p className="text-[11px] mt-1">اضغط على "إضافة مستخدم" للبدء</p>
+            <p className="text-[13px] font-semibold">لا يوجد مستفيدون حتى الآن</p>
+            <p className="text-[11px] mt-1">اضغط على "إضافة مستفيد" للبدء</p>
           </div>
         )}
       </div>
@@ -987,16 +985,24 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
       {modal.type === "edit" && editingUser && (
         <UserFormModal
           mode="edit"
-          initial={{ username: editingUser.username, password: editingUser.password, name: editingUser.name,
-            profits: editingUser.profits, subscription: editingUser.subscription, fees: editingUser.fees,
-            accountHolder: editingUser.accountHolder, iban: editingUser.iban, status: editingUser.status }}
+          initial={{
+            username: editingUser.username,
+            password: editingUser.password,
+            name: editingUser.name,
+            profits: editingUser.profits,
+            subscription: editingUser.subscription,
+            fees: editingUser.fees,
+            accountHolder: editingUser.accountHolder,
+            iban: editingUser.iban,
+            status: editingUser.status,
+          }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}
         />
       )}
       {modal.type === "delete" && (
         <ConfirmModal
-          message="هل أنت متأكد من حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء."
+          message="هل تريد حذف هذا المستفيد نهائياً؟"
           onConfirm={handleDelete}
           onCancel={() => setModal({ type: "none" })}
         />
@@ -1016,7 +1022,10 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [view, setView] = useState<"user" | "admin">("user");
+  const [view, setView] = useState<View>({ page: "login" });
+  const [users, setUsers] = useState<User[]>(initialUsers);
+
+  const activeUser = view.page === "user" ? users.find((u) => u.id === view.userId) : null;
 
   return (
     <div dir="rtl" style={{
@@ -1024,10 +1033,26 @@ export default function App() {
       background: "linear-gradient(180deg,#dce4f0 0%,#e8edf7 40%,#eaeef7 100%)",
       fontFamily: "'Cairo', sans-serif",
     }}>
-      {view === "user"
-        ? <UserDashboard onAdminClick={() => setView("admin")} />
-        : <AdminDashboard onBack={() => setView("user")} />
-      }
+      {view.page === "login" && (
+        <LoginPage
+          users={users}
+          onLogin={(v) => setView(v)}
+        />
+      )}
+      {view.page === "admin" && (
+        <AdminDashboard
+          users={users}
+          setUsers={setUsers}
+          onLogout={() => setView({ page: "login" })}
+          onViewUser={(userId) => setView({ page: "user", userId })}
+        />
+      )}
+      {view.page === "user" && activeUser && (
+        <UserDashboard
+          user={activeUser}
+          onLogout={() => setView({ page: "login" })}
+        />
+      )}
     </div>
   );
 }
