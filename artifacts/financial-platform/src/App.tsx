@@ -516,15 +516,15 @@ function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void })
             <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">المنصة المالية</h1>
             <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">مرحباً، {user.name}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-[#d0d7e8] text-[9px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
+              الريال السعودي (ر.س)
+            </button>
             <button
               onClick={onLogout}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
+              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[9px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
               <Icon.Logout />
               <span>تسجيل الخروج</span>
-            </button>
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
-              الريال السعودي (ر.س)
             </button>
           </div>
         </div>
