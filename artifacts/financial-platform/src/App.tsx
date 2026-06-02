@@ -210,12 +210,109 @@ function UserHeader({ onAdminClick }: { onAdminClick: () => void }) {
   );
 }
 
-function FinancialOperations() {
+function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void; maxAmount: string; iban: string; fees: string }) {
+  const [amount, setAmount] = useState("");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: "rgba(15,20,50,0.55)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-t-3xl"
+        style={{ fontFamily: "'Cairo', sans-serif" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6]">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282] hover:bg-[#e8edf5] transition-colors"
+          >
+            <Icon.X />
+          </button>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[16px] font-bold text-[#1a1f3c]">سحب الأموال</h3>
+            <span className="text-[17px]">$</span>
+          </div>
+          <div className="w-8" />
+        </div>
+
+        <div className="px-5 py-5 flex flex-col gap-4">
+          <p className="text-[12px] text-[#8892a4] font-medium text-center">
+            أدخل مبلغ السحب ورقم الإيبان
+          </p>
+
+          {/* Amount field */}
+          <div className="text-right">
+            <label className="block text-[12px] font-bold text-[#1a1f3c] mb-1.5">
+              مبلغ السحب (ر.س)
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="أدخل المبلغ"
+              className="w-full px-4 py-3 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[13px] font-semibold text-right outline-none focus:border-[#c8005a] focus:ring-1 focus:ring-[#c8005a] transition-all"
+            />
+            <p className="text-[11px] text-[#8892a4] font-medium mt-1.5 text-right">
+              الحد الأقصى: {maxAmount} ر.س
+            </p>
+          </div>
+
+          {/* IBAN field */}
+          <div className="text-right">
+            <label className="block text-[12px] font-bold text-[#1a1f3c] mb-1.5">
+              رقم الإيبان
+            </label>
+            <div
+              className="w-full px-4 py-3 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[14px] font-bold text-center"
+              dir="ltr"
+            >
+              {iban}
+            </div>
+          </div>
+
+          {/* Fees warning */}
+          <div
+            className="flex items-center justify-end gap-2 px-4 py-3 rounded-xl"
+            style={{ background: "#fffbeb", border: "1px solid #fde68a" }}
+          >
+            <span className="text-[13px] font-bold text-[#92400e]">
+              ر.س {fees}  :رسوم السحب
+            </span>
+            <span className="text-[16px]">⚠️</span>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-3 mt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[14px] hover:bg-[#f3f5fa] transition-colors"
+            >
+              إلغاء
+            </button>
+            <button
+              className="flex-1 py-3 rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}
+            >
+              متابعة
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinancialOperations({ onWithdrawClick }: { onWithdrawClick: () => void }) {
   return (
     <section className="px-4">
       <h2 className="text-[15px] font-bold text-[#1a1f3c] mb-3.5 text-right">العمليات المالية</h2>
       <div className="flex flex-col gap-3">
-        <button className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+        <button
+          onClick={onWithdrawClick}
+          className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
           style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}>
           <Icon.ArrowLeft /><span>سحب الأموال</span>
         </button>
@@ -346,11 +443,13 @@ function AccountInfoSection() {
 }
 
 function UserDashboard({ onAdminClick }: { onAdminClick: () => void }) {
+  const [showWithdraw, setShowWithdraw] = useState(false);
+
   return (
     <div className="max-w-md mx-auto">
       <UserHeader onAdminClick={onAdminClick} />
       <main className="flex flex-col gap-5 pb-2">
-        <FinancialOperations />
+        <FinancialOperations onWithdrawClick={() => setShowWithdraw(true)} />
         <section className="px-4">
           <h2 className="text-[15px] font-bold text-[#1a1f3c] mb-4 text-right">نظرة عامة على الحساب</h2>
           <div className="flex flex-col gap-4">
@@ -362,6 +461,14 @@ function UserDashboard({ onAdminClick }: { onAdminClick: () => void }) {
         </section>
         <AccountInfoSection />
       </main>
+      {showWithdraw && (
+        <WithdrawModal
+          onClose={() => setShowWithdraw(false)}
+          maxAmount={currentAccountData.profits.amount}
+          iban={currentAccountData.bank.iban}
+          fees={currentAccountData.fees.amount}
+        />
+      )}
     </div>
   );
 }
