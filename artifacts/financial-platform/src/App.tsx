@@ -11,6 +11,7 @@ interface User {
   fees: string;
   accountHolder: string;
   iban: string;
+  phone: string;
   status: "active" | "disabled";
 }
 
@@ -31,6 +32,7 @@ const initialUsers: User[] = [
     fees: "3,610",
     accountHolder: "عبدالرحمن سعيد يحيى ال فروان",
     iban: "SA15 8000 0220 6080 1030 8884",
+    phone: "+966 5X XXX XXXX",
     status: "active",
   },
   {
@@ -43,6 +45,7 @@ const initialUsers: User[] = [
     fees: "3,610",
     accountHolder: "خالد محمد العمري",
     iban: "SA29 6000 0100 0001 2345 6789",
+    phone: "+966 5X XXX XXXX",
     status: "active",
   },
   {
@@ -55,6 +58,7 @@ const initialUsers: User[] = [
     fees: "3,610",
     accountHolder: "فاطمة أحمد القحطاني",
     iban: "SA36 8000 0000 6080 1031 0009",
+    phone: "+966 5X XXX XXXX",
     status: "disabled",
   },
 ];
@@ -512,15 +516,15 @@ function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void })
             <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">المنصة المالية</h1>
             <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">مرحباً، {user.name}</p>
           </div>
-          <div className="flex items-center gap-2 flex-row-reverse">
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-              الريال السعودي (ر.س)
-            </button>
+          <div className="flex items-center gap-2">
             <button
               onClick={onLogout}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
               <Icon.Logout />
               <span>تسجيل الخروج</span>
+            </button>
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
+              الريال السعودي (ر.س)
             </button>
           </div>
         </div>
@@ -631,6 +635,35 @@ function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void })
             </div>
           </div>
         </section>
+
+        {/* Account Info */}
+        <section className="px-4 pb-8">
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-[#e2e8f0]">
+            <div className="text-right mb-5">
+              <h2 className="text-[17px] font-bold text-[#1a1f3c]">معلومات الحساب</h2>
+              <p className="text-[11px] text-[#8892a4] mt-0.5 font-medium">تفاصيل حسابك الشخصي</p>
+            </div>
+            <div className="flex flex-col gap-4">
+              {[
+                { label: "اسم العميل", value: user.name },
+                { label: "رقم الإيبان", value: user.iban, ltr: true },
+                { label: "مبلغ الاشتراك", value: `${user.subscription} ر.س` },
+                { label: "رقم الهاتف", value: user.phone, ltr: true },
+              ].map((f) => (
+                <div key={f.label} className="text-right">
+                  <label className="block text-[10px] font-semibold text-[#8892a4] mb-1.5">{f.label}</label>
+                  <div
+                    className="w-full px-4 py-2.5 rounded-xl bg-[#f3f5fa] border border-[#e2e8f0] text-[#1a1f3c] font-semibold text-[12px]"
+                    dir={f.ltr ? "ltr" : "rtl"}
+                    style={{ textAlign: f.ltr ? "left" : "right" }}
+                  >
+                    {f.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
 
       {showWithdraw && (
@@ -659,6 +692,7 @@ const emptyUser: Omit<User, "id"> = {
   fees: "",
   accountHolder: "",
   iban: "",
+  phone: "",
   status: "active",
 };
 
@@ -685,6 +719,7 @@ function UserFormModal({
     { key: "name", label: "اسم المستفيد الكامل", placeholder: "عبدالرحمن سعيد..." },
     { key: "accountHolder", label: "اسم صاحب الحساب البنكي", placeholder: "الاسم الكامل" },
     { key: "iban", label: "رقم الإيبان", placeholder: "SA15 8000...", ltr: true },
+    { key: "phone", label: "رقم الهاتف", placeholder: "+966 5X XXX XXXX", ltr: true },
     { key: "subscription", label: "مبلغ الاشتراك (ر.س)", placeholder: "1,000" },
     { key: "profits", label: "أرباح الاشتراك (ر.س)", placeholder: "17,400" },
     { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
@@ -994,6 +1029,7 @@ function AdminDashboard({
             fees: editingUser.fees,
             accountHolder: editingUser.accountHolder,
             iban: editingUser.iban,
+            phone: editingUser.phone,
             status: editingUser.status,
           }}
           onSave={handleEdit}
