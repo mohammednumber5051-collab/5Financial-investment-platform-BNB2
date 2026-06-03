@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface User {
@@ -21,6 +21,36 @@ type View =
   | { page: "user"; userId: string; fromAdmin?: boolean };
 
 const STORAGE_KEY = "financial_platform_users";
+
+/* ─── API helper ────────────────────────────────────────────── */
+// The API lives at the root /api path (shared proxy routes /api → api-server)
+// Do NOT prepend BASE_URL here — that would produce /financial-platform/api/...
+async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<T>;
+}
+
+type ApiUser = Omit<User, "id" | "status"> & { id: number; status: string };
+
+function mapApiUser(u: ApiUser): User {
+  return {
+    id: String(u.id),
+    username: u.username,
+    password: u.password,
+    name: u.name,
+    profits: u.profits,
+    subscription: u.subscription,
+    fees: u.fees,
+    accountHolder: u.accountHolder,
+    iban: u.iban,
+    phone: u.phone,
+    status: (u.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
+  };
+}
 
 /* ─── Mock Data ─────────────────────────────────────────────── */
 const initialUsers: User[] = [
@@ -844,41 +874,86 @@ type ModalState =
 
 function AdminDashboard({
   users,
-  setUsers,
+  onRefresh,
   onLogout,
   onViewUser,
 }: {
   users: User[];
-  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  onRefresh: () => Promise<void>;
   onLogout: () => void;
   onViewUser: (userId: string) => void;
 }) {
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [showPassId, setShowPassId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function handleCreate(data: Omit<User, "id">) {
-    setUsers((u) => [...u, { ...data, id: `u${Date.now()}` }]);
-    setModal({ type: "none" });
+  async function handleCreate(data: Omit<User, "id">) {
+    setSaving(true);
+    try {
+      await apiFetch("/beneficiaries", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      await onRefresh();
+      setModal({ type: "none" });
+    } catch (e) {
+      alert("فشل حفظ المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleEdit(data: Omit<User, "id">) {
+  async function handleEdit(data: Omit<User, "id">) {
     if (modal.type !== "edit") return;
-    setUsers((u) => u.map((x) => (x.id === modal.userId ? { ...x, ...data } : x)));
-    setModal({ type: "none" });
+    setSaving(true);
+    try {
+      await apiFetch(`/beneficiaries/${modal.userId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      await onRefresh();
+      setModal({ type: "none" });
+    } catch (e) {
+      alert("فشل تعديل المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (modal.type !== "delete") return;
-    setUsers((u) => u.filter((x) => x.id !== modal.userId));
-    setModal({ type: "none" });
+    setSaving(true);
+    try {
+      await apiFetch(`/beneficiaries/${modal.userId}`, { method: "DELETE" });
+      await onRefresh();
+      setModal({ type: "none" });
+    } catch (e) {
+      alert("فشل حذف المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleToggleDisable() {
+  async function handleToggleDisable() {
     if (modal.type !== "disable") return;
-    const id = modal.userId;
-    setUsers((u) => u.map((x) => x.id === id ? { ...x, status: x.status === "active" ? "disabled" : "active" } : x));
-    setModal({ type: "none" });
+    const target = users.find((u) => u.id === modal.userId);
+    if (!target) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/beneficiaries/${modal.userId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: target.status === "active" ? "disabled" : "active" }),
+      });
+      await onRefresh();
+      setModal({ type: "none" });
+    } catch (e) {
+      alert("فشل تغيير حالة الحساب: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+    } finally {
+      setSaving(false);
+    }
   }
+
+  void saving;
 
   const editingUser = modal.type === "edit" ? users.find((u) => u.id === modal.userId) : null;
   const disablingUser = modal.type === "disable" ? users.find((u) => u.id === modal.userId) : null;
@@ -1070,29 +1145,62 @@ function AdminDashboard({
 /* ═══════════════════════════════════════════════════════════════
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
-function loadUsers(): User[] {
+function loadLocalUsers(): User[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored) as User[];
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
   return initialUsers;
 }
 
 export default function App() {
   const [view, setView] = useState<View>({ page: "login" });
-  const [users, setUsers] = useState<User[]>(loadUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
-  useEffect(() => {
+  const refreshUsers = useCallback(async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+      const data = await apiFetch<ApiUser[]>("/beneficiaries");
+      const mapped = data.map(mapApiUser);
+      setUsers(mapped);
+      // also keep localStorage in sync as fallback
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(mapped)); } catch { /* ignore */ }
     } catch {
-      // ignore
+      // API unavailable → fall back to localStorage
+      setUsers(loadLocalUsers());
+    } finally {
+      setLoadingUsers(false);
     }
-  }, [users]);
+  }, []);
+
+  useEffect(() => { void refreshUsers(); }, [refreshUsers]);
 
   const activeUser = view.page === "user" ? users.find((u) => u.id === view.userId) : null;
+
+  if (loadingUsers) {
+    return (
+      <div dir="rtl" style={{
+        minHeight: "100vh",
+        background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+        fontFamily: "'Cairo', sans-serif",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: "16px",
+      }}>
+        <div style={{
+          width: 48, height: 48, border: "4px solid rgba(255,255,255,0.2)",
+          borderTopColor: "white", borderRadius: "50%",
+          animation: "spin 0.8s linear infinite",
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, fontWeight: 600 }}>
+          جارٍ تحميل البيانات...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div dir="rtl" style={{
@@ -1109,7 +1217,7 @@ export default function App() {
       {view.page === "admin" && (
         <AdminDashboard
           users={users}
-          setUsers={setUsers}
+          onRefresh={refreshUsers}
           onLogout={() => setView({ page: "login" })}
           onViewUser={(userId) => setView({ page: "user", userId, fromAdmin: true })}
         />
