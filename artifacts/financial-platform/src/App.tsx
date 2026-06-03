@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface User {
@@ -18,7 +18,9 @@ interface User {
 type View =
   | { page: "login" }
   | { page: "admin" }
-  | { page: "user"; userId: string };
+  | { page: "user"; userId: string; fromAdmin?: boolean };
+
+const STORAGE_KEY = "financial_platform_users";
 
 /* ─── Mock Data ─────────────────────────────────────────────── */
 const initialUsers: User[] = [
@@ -504,7 +506,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
   );
 }
 
-function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
 
   return (
@@ -516,16 +518,27 @@ function UserDashboard({ user, onLogout }: { user: User; onLogout: () => void })
             <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">المنصة المالية</h1>
             <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">مرحباً، {user.name}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-[#d0d7e8] text-[9px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
-              الريال السعودي (ر.س)
-            </button>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[9px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-              <Icon.Logout />
-              <span>تسجيل الخروج</span>
-            </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
+                الريال السعودي (ر.س)
+              </button>
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
+                <Icon.Logout />
+                <span>تسجيل الخروج</span>
+              </button>
+            </div>
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold shadow-sm transition-colors"
+                style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)", color: "white" }}>
+                <Icon.ArrowLeft />
+                <span>قائمة المستفيدين</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1057,9 +1070,27 @@ function AdminDashboard({
 /* ═══════════════════════════════════════════════════════════════
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
+function loadUsers(): User[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return JSON.parse(stored) as User[];
+  } catch {
+    // ignore
+  }
+  return initialUsers;
+}
+
 export default function App() {
   const [view, setView] = useState<View>({ page: "login" });
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>(loadUsers);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+    } catch {
+      // ignore
+    }
+  }, [users]);
 
   const activeUser = view.page === "user" ? users.find((u) => u.id === view.userId) : null;
 
@@ -1080,13 +1111,14 @@ export default function App() {
           users={users}
           setUsers={setUsers}
           onLogout={() => setView({ page: "login" })}
-          onViewUser={(userId) => setView({ page: "user", userId })}
+          onViewUser={(userId) => setView({ page: "user", userId, fromAdmin: true })}
         />
       )}
       {view.page === "user" && activeUser && (
         <UserDashboard
           user={activeUser}
           onLogout={() => setView({ page: "login" })}
+          onBack={view.fromAdmin ? () => setView({ page: "admin" }) : undefined}
         />
       )}
     </div>
