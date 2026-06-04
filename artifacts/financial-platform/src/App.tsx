@@ -262,7 +262,7 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
               <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
           </div>
-          <h1 className="text-[24px] font-extrabold text-white leading-tight">المنصة الاستثمار المالية</h1>
+          <h1 className="text-[24px] font-extrabold text-white leading-tight">منصة الاستثمار المالية</h1>
           <p className="text-white/60 text-[13px] font-medium mt-1">سجّل دخولك للمتابعة</p>
         </div>
 
