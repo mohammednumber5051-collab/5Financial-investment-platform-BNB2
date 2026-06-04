@@ -200,7 +200,7 @@ function CardIconBtn({ children, bg = "rgba(255,255,255,0.25)" }: { children: Re
 /* ═══════════════════════════════════════════════════════════════
    LOGIN PAGE
 ═══════════════════════════════════════════════════════════════ */
-function LoginPage({ onLogin }: { onLogin: (view: View) => void; users: User[] }) {
+function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: User[] }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -221,10 +221,14 @@ function LoginPage({ onLogin }: { onLogin: (view: View) => void; users: User[] }
         onLogin({ page: "admin" });
         return;
       }
-      const found = initialUsers.find(
+      const found = users.find(
         (u) => u.username === username && u.password === password
       );
       if (found) {
+        if (found.status === "disabled") {
+          setError("هذا الحساب معطّل. تواصل مع الإدارة");
+          return;
+        }
         onLogin({ page: "user", userId: found.id });
         return;
       }
