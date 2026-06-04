@@ -262,7 +262,7 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
               <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
           </div>
-          <h1 className="text-[24px] font-extrabold text-white leading-tight">المنصة المالية</h1>
+          <h1 className="text-[24px] font-extrabold text-white leading-tight">المنصة الاستثمار المالية</h1>
           <p className="text-white/60 text-[13px] font-medium mt-1">سجّل دخولك للمتابعة</p>
         </div>
 
@@ -555,7 +555,7 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
           <div className="flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-1.5">
               <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
-                الريال السعودي (ر.س)
+                <span className="text-[9px]">الريال السعودي (ر.س)</span>
               </button>
               <button
                 onClick={onLogout}
