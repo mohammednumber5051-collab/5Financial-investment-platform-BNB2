@@ -952,19 +952,54 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
         />
       )}
 
-      {/* Deposit toast */}
+      {/* Deposit toast — centered modal */}
       {depositToast && (
         <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl"
-          style={{ background: "#0088cc", fontFamily: "'Cairo', sans-serif", minWidth: 260 }}
+          className="fixed inset-0 z-50 flex items-center justify-center px-5"
+          style={{ background: "rgba(10,15,40,0.55)", backdropFilter: "blur(4px)", fontFamily: "'Cairo', sans-serif" }}
           dir="rtl"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
-          </svg>
-          <div>
-            <p className="text-white font-bold text-[13px] leading-snug">تم نسخ الرسالة!</p>
-            <p className="text-white/80 text-[11px] font-medium">الصقها في محادثة تلجرام</p>
+          <div
+            className="w-full max-w-xs rounded-3xl overflow-hidden shadow-2xl"
+            style={{
+              background: "white",
+              animation: "popIn 0.25s cubic-bezier(.175,.885,.32,1.275)",
+            }}
+          >
+            <style>{`@keyframes popIn { from { opacity:0; transform:scale(0.85); } to { opacity:1; transform:scale(1); } }`}</style>
+
+            {/* Header */}
+            <div className="flex flex-col items-center pt-7 pb-5 px-6"
+              style={{ background: "linear-gradient(135deg,#0077b5 0%,#0088cc 60%,#29b6f6 100%)" }}>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
+                style={{ background: "rgba(255,255,255,0.2)", border: "2px solid rgba(255,255,255,0.35)" }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+                </svg>
+              </div>
+              <p className="text-white font-extrabold text-[17px]">جارٍ فتح تلجرام</p>
+              <p className="text-white/75 text-[12px] font-medium mt-0.5">سيتم توجيهك خلال ثوانٍ...</p>
+            </div>
+
+            {/* Message box */}
+            <div className="px-5 py-5">
+              <p className="text-[11px] font-bold text-[#8892a4] mb-2 text-right">الرسالة المُعدَّة مسبقاً</p>
+              <div className="rounded-2xl px-4 py-3 text-right"
+                style={{ background: "#f0f9ff", border: "1.5px solid #bae6fd" }}>
+                <p className="text-[14px] font-bold text-[#0c4a6e] leading-relaxed">
+                  مرحبا كيف يمكنني دفع رسوم السحب
+                </p>
+              </div>
+              <div className="flex items-center gap-2 mt-3 justify-center">
+                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s infinite" }} />
+                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s 0.15s infinite" }} />
+                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s 0.3s infinite" }} />
+                <style>{`@keyframes bounce { 0%,100%{transform:translateY(0);opacity:.5} 50%{transform:translateY(-5px);opacity:1} }`}</style>
+              </div>
+              <p className="text-[11px] text-[#8892a4] font-medium text-center mt-2">
+                الصق الرسالة بعد فتح المحادثة
+              </p>
+            </div>
           </div>
         </div>
       )}
