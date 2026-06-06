@@ -759,21 +759,31 @@ function openTelegramDirect(link: string) {
     username = username.slice(1);
   }
 
-  // Try native Telegram app via tg:// deep link
-  window.location.href = `tg://resolve?domain=${username}`;
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // Fallback ONLY if the page is still visible (meaning the app did NOT open and take focus)
-  setTimeout(() => {
-    if (!document.hidden) {
-      window.open(`https://t.me/${username}`, "_blank");
-    }
-  }, 1800);
+  if (isMobile) {
+    // On mobile: https://t.me/ is a Universal/App Link → opens Telegram app directly
+    window.open(`https://t.me/${username}`, "_blank");
+  } else {
+    // On desktop: try tg:// via hidden iframe so we don't navigate away from the page
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "display:none;width:0;height:0;border:none;";
+    iframe.src = `tg://resolve?domain=${username}`;
+    document.body.appendChild(iframe);
+    // Fallback to web only if the app didn't open (page still visible)
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+      if (!document.hidden) {
+        window.open(`https://t.me/${username}`, "_blank");
+      }
+    }, 1800);
+  }
 }
 
 function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [depositToast, setDepositToast] = useState(false);
-  const [depositCountdown, setDepositCountdown] = useState(8);
+  const [depositCountdown, setDepositCountdown] = useState(5);
 
   return (
     <div className="max-w-md mx-auto">
@@ -825,9 +835,9 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
                 if (!user.telegramLink) return;
                 const msg = "مرحبا كيف يمكنني دفع رسوم السحب";
                 void navigator.clipboard.writeText(msg).finally(() => {
-                  setDepositCountdown(8);
+                  setDepositCountdown(5);
                   setDepositToast(true);
-                  let remaining = 8;
+                  let remaining = 5;
                   const tick = setInterval(() => {
                     remaining -= 1;
                     setDepositCountdown(remaining);
@@ -1025,7 +1035,7 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
                     <circle cx="28" cy="28" r="24" fill="none" stroke="#e0f0ff" strokeWidth="4"/>
                     <circle cx="28" cy="28" r="24" fill="none" stroke="#0088cc" strokeWidth="4"
                       strokeDasharray={`${2 * Math.PI * 24}`}
-                      strokeDashoffset={`${2 * Math.PI * 24 * (1 - depositCountdown / 8)}`}
+                      strokeDashoffset={`${2 * Math.PI * 24 * (1 - depositCountdown / 5)}`}
                       strokeLinecap="round"
                       style={{ transition: "stroke-dashoffset 0.9s linear" }}
                     />
