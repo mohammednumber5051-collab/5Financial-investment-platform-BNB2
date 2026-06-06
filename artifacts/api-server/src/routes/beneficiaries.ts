@@ -14,6 +14,25 @@ router.get("/beneficiaries", async (req, res) => {
   }
 });
 
+router.get("/beneficiaries/by-slug/:slug", async (req, res): Promise<void> => {
+  try {
+    const slug = req.params.slug;
+    const [row] = await db
+      .select()
+      .from(beneficiariesTable)
+      .where(eq(beneficiariesTable.loginSlug, slug))
+      .limit(1);
+    if (!row) {
+      res.status(404).json({ error: "الرابط غير موجود" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "فشل تحميل البيانات" });
+  }
+});
+
 router.post("/beneficiaries", async (req, res) => {
   try {
     const body = req.body as {
@@ -27,6 +46,8 @@ router.post("/beneficiaries", async (req, res) => {
       iban: string;
       phone: string;
       status: string;
+      loginTitle: string;
+      loginSlug: string;
     };
     const [row] = await db
       .insert(beneficiariesTable)
@@ -41,6 +62,8 @@ router.post("/beneficiaries", async (req, res) => {
         iban: body.iban ?? "",
         phone: body.phone ?? "",
         status: body.status ?? "active",
+        loginTitle: body.loginTitle ?? "",
+        loginSlug: body.loginSlug ?? "",
       })
       .returning();
     res.status(201).json(row);
@@ -50,7 +73,7 @@ router.post("/beneficiaries", async (req, res) => {
   }
 });
 
-router.put("/beneficiaries/:id", async (req, res) => {
+router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     const body = req.body as Partial<{
@@ -64,6 +87,8 @@ router.put("/beneficiaries/:id", async (req, res) => {
       iban: string;
       phone: string;
       status: string;
+      loginTitle: string;
+      loginSlug: string;
     }>;
     const [row] = await db
       .update(beneficiariesTable)
@@ -78,10 +103,12 @@ router.put("/beneficiaries/:id", async (req, res) => {
         ...(body.iban !== undefined && { iban: body.iban }),
         ...(body.phone !== undefined && { phone: body.phone }),
         ...(body.status !== undefined && { status: body.status }),
+        ...(body.loginTitle !== undefined && { loginTitle: body.loginTitle }),
+        ...(body.loginSlug !== undefined && { loginSlug: body.loginSlug }),
       })
       .where(eq(beneficiariesTable.id, id))
       .returning();
-    if (!row) return res.status(404).json({ error: "المستفيد غير موجود" });
+    if (!row) { res.status(404).json({ error: "المستفيد غير موجود" }); return; }
     res.json(row);
   } catch (err) {
     req.log.error(err);

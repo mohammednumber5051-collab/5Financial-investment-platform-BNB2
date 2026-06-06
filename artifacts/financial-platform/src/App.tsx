@@ -13,10 +13,13 @@ interface User {
   iban: string;
   phone: string;
   status: "active" | "disabled";
+  loginTitle: string;
+  loginSlug: string;
 }
 
 type View =
   | { page: "login" }
+  | { page: "client-login"; slug: string }
   | { page: "admin" }
   | { page: "user"; userId: string; fromAdmin?: boolean };
 
@@ -49,7 +52,15 @@ function mapApiUser(u: ApiUser): User {
     iban: u.iban,
     phone: u.phone,
     status: (u.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
+    loginTitle: u.loginTitle ?? "",
+    loginSlug: u.loginSlug ?? "",
   };
+}
+
+function getClientSlugFromUrl(): string | null {
+  const path = window.location.pathname;
+  const match = path.match(/\/client\/([^/]+)\/?$/);
+  return match ? match[1] : null;
 }
 
 /* ─── Mock Data ─────────────────────────────────────────────── */
@@ -66,6 +77,8 @@ const initialUsers: User[] = [
     iban: "SA15 8000 0220 6080 1030 8884",
     phone: "+966 5X XXX XXXX",
     status: "active",
+    loginTitle: "",
+    loginSlug: "",
   },
   {
     id: "u2",
@@ -79,6 +92,8 @@ const initialUsers: User[] = [
     iban: "SA29 6000 0100 0001 2345 6789",
     phone: "+966 5X XXX XXXX",
     status: "active",
+    loginTitle: "",
+    loginSlug: "",
   },
   {
     id: "u3",
@@ -92,6 +107,8 @@ const initialUsers: User[] = [
     iban: "SA36 8000 0000 6080 1031 0009",
     phone: "+966 5X XXX XXXX",
     status: "disabled",
+    loginTitle: "",
+    loginSlug: "",
   },
 ];
 
@@ -341,6 +358,182 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
         <p className="text-center text-white/40 text-[11px] font-medium mt-6">
           المنصة المالية © 2025
         </p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CLIENT LOGIN PAGE (beneficiary-specific URL)
+═══════════════════════════════════════════════════════════════ */
+function ClientLoginPage({ slug, onLogin }: { slug: string; onLogin: (view: View) => void }) {
+  const [beneficiary, setBeneficiary] = useState<User | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    apiFetch<ApiUser>(`/beneficiaries/by-slug/${encodeURIComponent(slug)}`)
+      .then((u) => setBeneficiary(mapApiUser(u)))
+      .catch(() => setNotFound(true));
+  }, [slug]);
+
+  function handleLogin() {
+    setError("");
+    if (!username.trim() || !password.trim()) {
+      setError("يرجى إدخال اسم المستخدم وكلمة المرور");
+      return;
+    }
+    if (!beneficiary) return;
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      if (username !== beneficiary.username || password !== beneficiary.password) {
+        setError("اسم المستخدم أو كلمة المرور غير صحيحة");
+        return;
+      }
+      if (beneficiary.status === "disabled") {
+        setError("هذا الحساب معطّل. تواصل مع الإدارة");
+        return;
+      }
+      onLogin({ page: "user", userId: beneficiary.id });
+    }, 600);
+  }
+
+  if (notFound) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-5"
+        style={{
+          background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+          fontFamily: "'Cairo', sans-serif",
+        }}
+        dir="rtl"
+      >
+        <div className="text-center text-white">
+          <p className="text-[22px] font-extrabold mb-2">الصفحة غير موجودة</p>
+          <p className="text-white/60 text-[14px]">هذا الرابط غير صحيح أو تم حذفه</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!beneficiary) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{
+          background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+          fontFamily: "'Cairo', sans-serif",
+        }}
+      >
+        <div style={{
+          width: 40, height: 40, border: "4px solid rgba(255,255,255,0.2)",
+          borderTopColor: "white", borderRadius: "50%",
+          animation: "spin 0.8s linear infinite",
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center px-5"
+      style={{
+        background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+        fontFamily: "'Cairo', sans-serif",
+      }}
+      dir="rtl"
+    >
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.3)" }} />
+        <div className="absolute -bottom-16 -left-16 w-64 h-64 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.2)" }} />
+        <div className="absolute top-1/2 left-1/4 w-40 h-40 rounded-full opacity-5" style={{ background: "rgba(255,255,255,0.4)" }} />
+      </div>
+
+      <div className="w-full max-w-sm relative z-10">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.25)" }}>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </div>
+          <h1 className="text-[22px] font-extrabold text-white leading-tight">{beneficiary.loginTitle || beneficiary.name}</h1>
+          <p className="text-white/60 text-[13px] font-medium mt-1">سجّل دخولك للمتابعة</p>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 shadow-2xl">
+          <h2 className="text-[17px] font-extrabold text-[#1a1f3c] text-center mb-6">تسجيل الدخول</h2>
+
+          {error && (
+            <div className="mb-4 px-4 py-3 rounded-2xl text-center text-[12px] font-bold"
+              style={{ background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca" }}>
+              {error}
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="block text-[12px] font-bold text-[#5a6282] mb-2 text-right">اسم المستخدم</label>
+            <div className="relative">
+              <div className="absolute top-1/2 -translate-y-1/2 right-3 text-[#8892a4]">
+                <Icon.User />
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="أدخل اسم المستخدم"
+                className="w-full pl-4 pr-11 py-3 rounded-2xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none transition-all"
+                style={{ direction: "ltr", textAlign: "right" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(41,82,227,0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-[12px] font-bold text-[#5a6282] mb-2 text-right">كلمة المرور</label>
+            <div className="relative">
+              <div className="absolute top-1/2 -translate-y-1/2 right-3 text-[#8892a4]">
+                <Icon.Lock />
+              </div>
+              <input
+                type={showPass ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="أدخل كلمة المرور"
+                className="w-full pl-10 pr-11 py-3 rounded-2xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none transition-all"
+                style={{ direction: "ltr", textAlign: "right" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(41,82,227,0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute top-1/2 -translate-y-1/2 left-3 text-[#8892a4] hover:text-[#5a6282] transition-colors"
+              >
+                {showPass ? <Icon.EyeOff /> : <Icon.Eye />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full py-3.5 rounded-2xl text-white font-bold text-[15px] shadow-lg transition-opacity active:opacity-90 disabled:opacity-70"
+            style={{ background: "linear-gradient(135deg,#2952e3 0%,#7c3aed 100%)" }}
+          >
+            {loading ? "جارٍ التحقق..." : "تسجيل الدخول"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -741,6 +934,8 @@ const emptyUser: Omit<User, "id"> = {
   iban: "",
   phone: "",
   status: "active",
+  loginTitle: "",
+  loginSlug: "",
 };
 
 function UserFormModal({
@@ -770,6 +965,8 @@ function UserFormModal({
     { key: "subscription", label: "مبلغ الاشتراك (ر.س)", placeholder: "1,000" },
     { key: "profits", label: "أرباح الاشتراك (ر.س)", placeholder: "17,400" },
     { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
+    { key: "loginTitle", label: "عنوان صفحة تسجيل الدخول", placeholder: "شركة محمد أحمد للاستثمار" },
+    { key: "loginSlug", label: "رابط تسجيل الدخول (Slug)", placeholder: "mohammed", ltr: true },
   ];
 
   return (
@@ -1071,6 +1268,23 @@ function AdminDashboard({
                 </p>
               </div>
 
+              {/* Login URL info */}
+              {user.loginSlug && (
+                <div className="rounded-2xl p-3.5 text-right mb-4"
+                  style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+                  <p className="text-[10px] font-bold text-[#15803d] mb-1">عنوان صفحة تسجيل الدخول</p>
+                  <p className="text-[12px] font-bold text-[#1a1f3c] mb-2 leading-snug">{user.loginTitle || "—"}</p>
+                  <p className="text-[10px] font-bold text-[#15803d] mb-1">رابط تسجيل الدخول</p>
+                  <p
+                    className="text-[11px] font-semibold text-[#2952e3] break-all"
+                    dir="ltr"
+                    style={{ textAlign: "left" }}
+                  >
+                    {`${window.location.origin}${import.meta.env.BASE_URL}client/${user.loginSlug}`}
+                  </p>
+                </div>
+              )}
+
               {/* Action buttons */}
               <div className="flex gap-2">
                 <button onClick={() => setModal({ type: "edit", userId: user.id })}
@@ -1123,6 +1337,8 @@ function AdminDashboard({
             iban: editingUser.iban,
             phone: editingUser.phone,
             status: editingUser.status,
+            loginTitle: editingUser.loginTitle ?? "",
+            loginSlug: editingUser.loginSlug ?? "",
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}
@@ -1158,7 +1374,10 @@ function loadLocalUsers(): User[] {
 }
 
 export default function App() {
-  const [view, setView] = useState<View>({ page: "login" });
+  const initialSlug = getClientSlugFromUrl();
+  const [view, setView] = useState<View>(
+    initialSlug ? { page: "client-login", slug: initialSlug } : { page: "login" }
+  );
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
@@ -1181,7 +1400,7 @@ export default function App() {
 
   const activeUser = view.page === "user" ? users.find((u) => u.id === view.userId) : null;
 
-  if (loadingUsers) {
+  if (loadingUsers && view.page !== "client-login") {
     return (
       <div dir="rtl" style={{
         minHeight: "100vh",
@@ -1212,6 +1431,12 @@ export default function App() {
       background: "linear-gradient(180deg,#dce4f0 0%,#e8edf7 40%,#eaeef7 100%)",
       fontFamily: "'Cairo', sans-serif",
     }}>
+      {view.page === "client-login" && (
+        <ClientLoginPage
+          slug={view.slug}
+          onLogin={(v) => { void refreshUsers(); setView(v); }}
+        />
+      )}
       {view.page === "login" && (
         <LoginPage
           users={users}
@@ -1232,6 +1457,25 @@ export default function App() {
           onLogout={() => setView({ page: "login" })}
           onBack={view.fromAdmin ? () => setView({ page: "admin" }) : undefined}
         />
+      )}
+      {view.page === "user" && !activeUser && loadingUsers && (
+        <div dir="rtl" style={{
+          minHeight: "100vh",
+          background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
+          fontFamily: "'Cairo', sans-serif",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: "16px",
+        }}>
+          <div style={{
+            width: 48, height: 48, border: "4px solid rgba(255,255,255,0.2)",
+            borderTopColor: "white", borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
       )}
     </div>
   );

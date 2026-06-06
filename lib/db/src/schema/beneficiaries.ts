@@ -14,6 +14,8 @@ export const beneficiariesTable = pgTable("beneficiaries", {
   iban: text("iban").notNull().default(""),
   phone: text("phone").notNull().default(""),
   status: text("status").notNull().default("active"),
+  loginTitle: text("login_title").notNull().default(""),
+  loginSlug: text("login_slug").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
