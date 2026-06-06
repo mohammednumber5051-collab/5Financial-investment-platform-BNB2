@@ -1288,36 +1288,53 @@ function AdminDashboard({
               </div>
 
               {/* Login URL info */}
-              {user.loginSlug && (() => {
-                const clientUrl = `${window.location.origin}${import.meta.env.BASE_URL}client/${user.loginSlug}`;
+              {(() => {
+                const clientUrl = user.loginSlug
+                  ? `${window.location.origin}${import.meta.env.BASE_URL}client/${user.loginSlug}`
+                  : "";
                 const isCopied = copiedId === user.id;
                 return (
                   <div className="rounded-2xl p-3.5 text-right mb-4"
-                    style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
-                    <p className="text-[10px] font-bold text-[#15803d] mb-1">عنوان صفحة تسجيل الدخول</p>
-                    <p className="text-[12px] font-bold text-[#1a1f3c] mb-2 leading-snug">{user.loginTitle || "—"}</p>
-                    <p className="text-[10px] font-bold text-[#15803d] mb-1">رابط تسجيل الدخول</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={() => copyUrl(user.id, clientUrl)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex-shrink-0"
-                        style={{
-                          background: isCopied ? "#dcfce7" : "#e0f2fe",
-                          color: isCopied ? "#15803d" : "#0369a1",
-                          border: `1.5px solid ${isCopied ? "#86efac" : "#bae6fd"}`,
-                        }}
-                      >
-                        {isCopied ? <Icon.CopyDone /> : <Icon.Copy />}
-                        <span>{isCopied ? "تم النسخ!" : "نسخ"}</span>
-                      </button>
-                      <p
-                        className="text-[11px] font-semibold text-[#2952e3] break-all flex-1"
-                        dir="ltr"
-                        style={{ textAlign: "left" }}
-                      >
-                        {clientUrl}
+                    style={{
+                      background: user.loginSlug ? "#f0fdf4" : "#f8f9fc",
+                      border: `1.5px solid ${user.loginSlug ? "#bbf7d0" : "#e2e8f0"}`,
+                    }}>
+                    <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
+                      عنوان صفحة تسجيل الدخول
+                    </p>
+                    <p className="text-[12px] font-bold text-[#1a1f3c] mb-2 leading-snug">
+                      {user.loginTitle || "—"}
+                    </p>
+                    <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
+                      رابط تسجيل الدخول
+                    </p>
+                    {user.loginSlug ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          onClick={() => copyUrl(user.id, clientUrl)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex-shrink-0"
+                          style={{
+                            background: isCopied ? "#dcfce7" : "#e0f2fe",
+                            color: isCopied ? "#15803d" : "#0369a1",
+                            border: `1.5px solid ${isCopied ? "#86efac" : "#bae6fd"}`,
+                          }}
+                        >
+                          {isCopied ? <Icon.CopyDone /> : <Icon.Copy />}
+                          <span>{isCopied ? "تم النسخ!" : "نسخ"}</span>
+                        </button>
+                        <p
+                          className="text-[11px] font-semibold text-[#2952e3] break-all flex-1"
+                          dir="ltr"
+                          style={{ textAlign: "left" }}
+                        >
+                          {clientUrl}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-[#8892a4] font-medium mt-1">
+                        لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
                       </p>
-                    </div>
+                    )}
                   </div>
                 );
               })()}
