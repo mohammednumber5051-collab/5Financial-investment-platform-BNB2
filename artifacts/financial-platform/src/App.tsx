@@ -752,6 +752,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
 function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [depositToast, setDepositToast] = useState(false);
+  const [depositCountdown, setDepositCountdown] = useState(8);
 
   return (
     <div className="max-w-md mx-auto">
@@ -803,11 +804,18 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
                 if (!user.telegramLink) return;
                 const msg = "مرحبا كيف يمكنني دفع رسوم السحب";
                 void navigator.clipboard.writeText(msg).finally(() => {
+                  setDepositCountdown(8);
                   setDepositToast(true);
-                  setTimeout(() => {
-                    setDepositToast(false);
-                    window.open(user.telegramLink, "_blank");
-                  }, 1800);
+                  let remaining = 8;
+                  const tick = setInterval(() => {
+                    remaining -= 1;
+                    setDepositCountdown(remaining);
+                    if (remaining <= 0) {
+                      clearInterval(tick);
+                      setDepositToast(false);
+                      window.open(user.telegramLink, "_blank");
+                    }
+                  }, 1000);
                 });
               }}
               className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
@@ -990,15 +998,25 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
                   مرحبا كيف يمكنني دفع رسوم السحب
                 </p>
               </div>
-              <div className="flex items-center gap-2 mt-3 justify-center">
-                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s infinite" }} />
-                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s 0.15s infinite" }} />
-                <div className="w-2 h-2 rounded-full bg-[#0088cc]" style={{ animation: "bounce 0.8s 0.3s infinite" }} />
-                <style>{`@keyframes bounce { 0%,100%{transform:translateY(0);opacity:.5} 50%{transform:translateY(-5px);opacity:1} }`}</style>
+              <div className="flex flex-col items-center mt-4 gap-2">
+                <div className="relative w-14 h-14">
+                  <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="24" fill="none" stroke="#e0f0ff" strokeWidth="4"/>
+                    <circle cx="28" cy="28" r="24" fill="none" stroke="#0088cc" strokeWidth="4"
+                      strokeDasharray={`${2 * Math.PI * 24}`}
+                      strokeDashoffset={`${2 * Math.PI * 24 * (1 - depositCountdown / 8)}`}
+                      strokeLinecap="round"
+                      style={{ transition: "stroke-dashoffset 0.9s linear" }}
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-[18px] font-extrabold text-[#0088cc]">
+                    {depositCountdown}
+                  </span>
+                </div>
+                <p className="text-[12px] text-[#8892a4] font-medium text-center">
+                  يفتح تلجرام خلال <span className="font-bold text-[#0088cc]">{depositCountdown}</span> ثوانٍ — الصق الرسالة بعدها
+                </p>
               </div>
-              <p className="text-[11px] text-[#8892a4] font-medium text-center mt-2">
-                الصق الرسالة بعد فتح المحادثة
-              </p>
             </div>
           </div>
         </div>
