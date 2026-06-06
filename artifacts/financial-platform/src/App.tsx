@@ -751,6 +751,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
 
 function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [depositToast, setDepositToast] = useState(false);
 
   return (
     <div className="max-w-md mx-auto">
@@ -799,10 +800,15 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
             </button>
             <button
               onClick={() => {
-                if (user.telegramLink) {
-                  const msg = encodeURIComponent("مرحبا كيف يمكنني دفع رسوم السحب");
-                  window.open(`${user.telegramLink}?text=${msg}`, "_blank");
-                }
+                if (!user.telegramLink) return;
+                const msg = "مرحبا كيف يمكنني دفع رسوم السحب";
+                void navigator.clipboard.writeText(msg).finally(() => {
+                  setDepositToast(true);
+                  setTimeout(() => {
+                    setDepositToast(false);
+                    window.open(user.telegramLink, "_blank");
+                  }, 1800);
+                });
               }}
               className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
               style={{
@@ -944,6 +950,23 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
           fees={user.fees}
           userName={user.name}
         />
+      )}
+
+      {/* Deposit toast */}
+      {depositToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl"
+          style={{ background: "#0088cc", fontFamily: "'Cairo', sans-serif", minWidth: 260 }}
+          dir="rtl"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+          </svg>
+          <div>
+            <p className="text-white font-bold text-[13px] leading-snug">تم نسخ الرسالة!</p>
+            <p className="text-white/80 text-[11px] font-medium">الصقها في محادثة تلجرام</p>
+          </div>
+        </div>
       )}
     </div>
   );
