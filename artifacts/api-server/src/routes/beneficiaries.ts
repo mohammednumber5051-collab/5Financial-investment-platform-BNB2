@@ -48,6 +48,7 @@ router.post("/beneficiaries", async (req, res) => {
       status: string;
       loginTitle: string;
       loginSlug: string;
+      telegramLink: string;
     };
     const [row] = await db
       .insert(beneficiariesTable)
@@ -64,6 +65,7 @@ router.post("/beneficiaries", async (req, res) => {
         status: body.status ?? "active",
         loginTitle: body.loginTitle ?? "",
         loginSlug: body.loginSlug ?? "",
+        telegramLink: body.telegramLink ?? "",
       })
       .returning();
     res.status(201).json(row);
@@ -89,6 +91,7 @@ router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
       status: string;
       loginTitle: string;
       loginSlug: string;
+      telegramLink: string;
     }>;
     const [row] = await db
       .update(beneficiariesTable)
@@ -105,6 +108,7 @@ router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
         ...(body.status !== undefined && { status: body.status }),
         ...(body.loginTitle !== undefined && { loginTitle: body.loginTitle }),
         ...(body.loginSlug !== undefined && { loginSlug: body.loginSlug }),
+        ...(body.telegramLink !== undefined && { telegramLink: body.telegramLink }),
       })
       .where(eq(beneficiariesTable.id, id))
       .returning();

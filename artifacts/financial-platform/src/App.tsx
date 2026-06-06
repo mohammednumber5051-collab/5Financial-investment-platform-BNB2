@@ -15,6 +15,7 @@ interface User {
   status: "active" | "disabled";
   loginTitle: string;
   loginSlug: string;
+  telegramLink: string;
 }
 
 type View =
@@ -54,6 +55,7 @@ function mapApiUser(u: ApiUser): User {
     status: (u.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
     loginTitle: u.loginTitle ?? "",
     loginSlug: u.loginSlug ?? "",
+    telegramLink: u.telegramLink ?? "",
   };
 }
 
@@ -79,6 +81,7 @@ const initialUsers: User[] = [
     status: "active",
     loginTitle: "",
     loginSlug: "",
+    telegramLink: "",
   },
   {
     id: "u2",
@@ -94,6 +97,7 @@ const initialUsers: User[] = [
     status: "active",
     loginTitle: "",
     loginSlug: "",
+    telegramLink: "",
   },
   {
     id: "u3",
@@ -109,6 +113,7 @@ const initialUsers: User[] = [
     status: "disabled",
     loginTitle: "",
     loginSlug: "",
+    telegramLink: "",
   },
 ];
 
@@ -947,6 +952,7 @@ const emptyUser: Omit<User, "id"> = {
   status: "active",
   loginTitle: "",
   loginSlug: "",
+  telegramLink: "",
 };
 
 function UserFormModal({
@@ -978,6 +984,7 @@ function UserFormModal({
     { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
     { key: "loginTitle", label: "عنوان صفحة تسجيل الدخول", placeholder: "شركة محمد أحمد للاستثمار" },
     { key: "loginSlug", label: "رابط تسجيل الدخول (Slug)", placeholder: "mohammed", ltr: true },
+    { key: "telegramLink", label: "رابط تلجرام الإيداع", placeholder: "https://t.me/username", ltr: true },
   ];
 
   return (
@@ -1287,6 +1294,39 @@ function AdminDashboard({
                 </p>
               </div>
 
+              {/* Telegram link */}
+              {user.telegramLink ? (
+                <div className="rounded-2xl p-3.5 text-right mb-4"
+                  style={{ background: "#f0f9ff", border: "1.5px solid #bae6fd" }}>
+                  <p className="text-[10px] font-bold text-[#0369a1] mb-1">رابط تلجرام الإيداع</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <a
+                      href={user.telegramLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex-shrink-0"
+                      style={{ background: "#0088cc", color: "white", border: "1.5px solid #0077b5" }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+                      </svg>
+                      <span>فتح</span>
+                    </a>
+                    <p className="text-[11px] font-semibold text-[#0369a1] break-all flex-1" dir="ltr" style={{ textAlign: "left" }}>
+                      {user.telegramLink}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl p-3.5 text-right mb-4"
+                  style={{ background: "#f8f9fc", border: "1.5px solid #e2e8f0" }}>
+                  <p className="text-[10px] font-bold text-[#8892a4] mb-1">رابط تلجرام الإيداع</p>
+                  <p className="text-[11px] text-[#8892a4] font-medium mt-1">
+                    لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
+                  </p>
+                </div>
+              )}
+
               {/* Login URL info */}
               {(() => {
                 const clientUrl = user.loginSlug
@@ -1393,6 +1433,7 @@ function AdminDashboard({
             status: editingUser.status,
             loginTitle: editingUser.loginTitle ?? "",
             loginSlug: editingUser.loginSlug ?? "",
+            telegramLink: editingUser.telegramLink ?? "",
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}
