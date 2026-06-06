@@ -749,6 +749,23 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
   );
 }
 
+function openTelegramDirect(link: string) {
+  // Extract username from any format: @user / t.me/user / https://t.me/user / username
+  let username = link.trim();
+  const match = username.match(/(?:t\.me\/|tg:\/\/resolve\?domain=)([A-Za-z0-9_]+)/);
+  if (match) {
+    username = match[1];
+  } else if (username.startsWith("@")) {
+    username = username.slice(1);
+  }
+  // Try native app first via tg:// deep link
+  window.location.href = `tg://resolve?domain=${username}`;
+  // Fallback to web after short delay (in case app not installed)
+  setTimeout(() => {
+    window.open(`https://t.me/${username}`, "_blank");
+  }, 1500);
+}
+
 function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [depositToast, setDepositToast] = useState(false);
@@ -813,7 +830,7 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
                     if (remaining <= 0) {
                       clearInterval(tick);
                       setDepositToast(false);
-                      window.open(user.telegramLink, "_blank");
+                      openTelegramDirect(user.telegramLink);
                     }
                   }, 1000);
                 });
