@@ -758,12 +758,16 @@ function openTelegramDirect(link: string) {
   } else if (username.startsWith("@")) {
     username = username.slice(1);
   }
-  // Try native app first via tg:// deep link
+
+  // Try native Telegram app via tg:// deep link
   window.location.href = `tg://resolve?domain=${username}`;
-  // Fallback to web after short delay (in case app not installed)
+
+  // Fallback ONLY if the page is still visible (meaning the app did NOT open and take focus)
   setTimeout(() => {
-    window.open(`https://t.me/${username}`, "_blank");
-  }, 1500);
+    if (!document.hidden) {
+      window.open(`https://t.me/${username}`, "_blank");
+    }
+  }, 1800);
 }
 
 function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
