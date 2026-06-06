@@ -797,9 +797,23 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
               style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 50%,#ff4d88 100%)" }}>
               <Icon.ArrowLeft /><span>سحب الأموال</span>
             </button>
-            <button className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg,#0f7a38 0%,#16a34a 50%,#22c55e 100%)" }}>
-              <Icon.Plus /><span>إيداع الأموال</span>
+            <button
+              onClick={() => {
+                if (user.telegramLink) {
+                  const msg = encodeURIComponent("مرحبا كيف يمكنني دفع رسوم السحب");
+                  window.open(`${user.telegramLink}?text=${msg}`, "_blank");
+                }
+              }}
+              className="w-full flex items-center justify-center gap-3 px-6 py-[14px] rounded-2xl text-white font-bold text-[14px] shadow-md active:opacity-90 transition-opacity"
+              style={{
+                background: "linear-gradient(135deg,#0f7a38 0%,#16a34a 50%,#22c55e 100%)",
+                opacity: user.telegramLink ? 1 : 0.5,
+                cursor: user.telegramLink ? "pointer" : "not-allowed",
+              }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+              </svg>
+              <span>إيداع الأموال</span>
             </button>
           </div>
         </section>
