@@ -16,6 +16,17 @@ interface User {
   loginTitle: string;
   loginSlug: string;
   telegramLink: string;
+  withdrawalFeeStatus: "unpaid" | "paid";
+}
+
+interface Notification {
+  id: number;
+  beneficiaryId: number;
+  type: "profits_added" | "fees_paid";
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
 }
 
 type View =
@@ -38,7 +49,7 @@ async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<
   return res.json() as Promise<T>;
 }
 
-type ApiUser = Omit<User, "id" | "status"> & { id: number; status: string };
+type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus"> & { id: number; status: string; withdrawalFeeStatus?: string };
 
 function mapApiUser(u: ApiUser): User {
   return {
@@ -56,6 +67,7 @@ function mapApiUser(u: ApiUser): User {
     loginTitle: u.loginTitle ?? "",
     loginSlug: u.loginSlug ?? "",
     telegramLink: u.telegramLink ?? "",
+    withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
   };
 }
 
@@ -82,6 +94,7 @@ const initialUsers: User[] = [
     loginTitle: "",
     loginSlug: "",
     telegramLink: "",
+    withdrawalFeeStatus: "unpaid",
   },
   {
     id: "u2",
@@ -98,6 +111,7 @@ const initialUsers: User[] = [
     loginTitle: "",
     loginSlug: "",
     telegramLink: "",
+    withdrawalFeeStatus: "unpaid",
   },
   {
     id: "u3",
@@ -114,6 +128,7 @@ const initialUsers: User[] = [
     loginTitle: "",
     loginSlug: "",
     telegramLink: "",
+    withdrawalFeeStatus: "unpaid",
   },
 ];
 
@@ -217,6 +232,28 @@ const Icon = {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  Bell: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  ),
+  Gift: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 12 20 22 4 22 4 12" />
+      <rect x="2" y="7" width="20" height="5" />
+      <line x1="12" y1="22" x2="12" y2="7" />
+      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+      <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+    </svg>
+  ),
+  Receipt: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z" />
+      <line x1="8" y1="10" x2="16" y2="10" />
+      <line x1="8" y1="14" x2="14" y2="14" />
     </svg>
   ),
 };
@@ -780,10 +817,91 @@ function openTelegramDirect(link: string) {
   }
 }
 
-function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () => void; onBack?: () => void }) {
+function UserDashboard({
+  user, onLogout, onBack, onRefreshUser,
+}: {
+  user: User; onLogout: () => void; onBack?: () => void; onRefreshUser?: () => Promise<void>;
+}) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [depositToast, setDepositToast] = useState(false);
   const [depositCountdown, setDepositCountdown] = useState(5);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupNotif, setPopupNotif] = useState<Notification | null>(null);
+  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" } | null>(null);
+  const [addProfitAmt, setAddProfitAmt] = useState("");
+  const [addFeesAmt, setAddFeesAmt] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  useEffect(() => {
+    if (onBack) return;
+    const uid = Number(user.id);
+    if (!uid) return;
+    apiFetch<Notification[]>(`/beneficiaries/${uid}/notifications`)
+      .then((data) => {
+        setNotifications(data);
+        const first = data.find((n) => !n.isRead);
+        if (first) { setPopupNotif(first); setShowPopup(true); }
+      })
+      .catch(() => {});
+  }, [user.id, onBack]);
+
+  async function markRead(id: number) {
+    try {
+      await apiFetch(`/notifications/${id}/read`, { method: "PUT" });
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n));
+    } catch { /* silent */ }
+  }
+
+  function openNotifPanel() {
+    setShowNotifPanel(true);
+    notifications.filter((n) => !n.isRead).forEach((n) => void markRead(n.id));
+  }
+
+  async function dismissPopup() {
+    if (popupNotif) await markRead(popupNotif.id);
+    const remaining = notifications.filter((n) => !n.isRead && n.id !== popupNotif?.id);
+    if (remaining.length > 0) { setPopupNotif(remaining[0]); }
+    else { setShowPopup(false); setPopupNotif(null); }
+  }
+
+  async function handleAdminFinancial() {
+    if (!adminModal) return;
+    setAdminLoading(true);
+    try {
+      const uid = Number(user.id);
+      if (adminModal.type === "add-profits") {
+        const amt = parseInt(addProfitAmt.replace(/,/g, ""), 10);
+        if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
+        await apiFetch(`/beneficiaries/${uid}/add-profits`, { method: "POST", body: JSON.stringify({ amount: amt }) });
+        setAddProfitAmt("");
+      } else if (adminModal.type === "add-fees") {
+        const amt = parseInt(addFeesAmt.replace(/,/g, ""), 10);
+        if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
+        await apiFetch(`/beneficiaries/${uid}/add-fees`, { method: "POST", body: JSON.stringify({ amount: amt }) });
+        setAddFeesAmt("");
+      } else {
+        await apiFetch(`/beneficiaries/${uid}/pay-fees`, { method: "POST" });
+      }
+      await onRefreshUser?.();
+      setAdminModal(null);
+    } catch (e) {
+      alert("فشلت العملية: " + (e instanceof Error ? e.message : "خطأ"));
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  function fmtNotifDate(iso: string) {
+    const d = new Date(iso);
+    return {
+      date: d.toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" }),
+      time: d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" }),
+    };
+  }
 
   return (
     <div className="max-w-md mx-auto">
@@ -796,6 +914,19 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-1.5">
+              {!onBack && (
+                <button
+                  onClick={openNotifPanel}
+                  className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[#d0d7e8] shadow-sm hover:bg-gray-50 transition-colors"
+                  style={{ color: unreadCount > 0 ? "#2952e3" : "#8892a4" }}>
+                  <Icon.Bell />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-extrabold flex items-center justify-center leading-none">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+              )}
               <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
                 <span className="text-[9px]">الريال السعودي (ر.س)</span>
               </button>
@@ -818,6 +949,93 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
           </div>
         </div>
       </div>
+
+      {/* ── Admin Financial Management Section ──────────────── */}
+      {onBack && (
+        <section className="px-4 mb-1" dir="rtl">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 h-px bg-[#e2e8f0]" />
+            <span className="text-[11px] font-extrabold text-[#5a6282] px-2">إدارة الحساب المالي</span>
+            <div className="flex-1 h-px bg-[#e2e8f0]" />
+          </div>
+          <div className="flex flex-col gap-3">
+
+            {/* Add Profits */}
+            <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#dcfce7" }}>
+                  <Icon.Gift />
+                </div>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">إضافة أرباح</p>
+              </div>
+              <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">الأرباح الحالية: <span className="text-[#16a34a] font-extrabold">{user.profits} ر.س</span></div>
+              <input
+                type="number"
+                value={addProfitAmt}
+                onChange={(e) => setAddProfitAmt(e.target.value)}
+                placeholder="المبلغ المراد إضافته..."
+                className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none focus:border-[#16a34a] mb-3"
+                dir="rtl"
+              />
+              <button
+                onClick={() => { if (addProfitAmt && Number(addProfitAmt) > 0) setAdminModal({ type: "add-profits" }); }}
+                className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
+                style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+                إضافة الأرباح
+              </button>
+            </div>
+
+            {/* Add Fees */}
+            <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fef3c7" }}>
+                  <Icon.Receipt />
+                </div>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">إضافة رسوم</p>
+              </div>
+              <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">الرسوم الحالية: <span className="text-[#ef4444] font-extrabold">{user.fees} ر.س</span></div>
+              <input
+                type="number"
+                value={addFeesAmt}
+                onChange={(e) => setAddFeesAmt(e.target.value)}
+                placeholder="مبلغ الرسوم المراد إضافته..."
+                className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none focus:border-[#d97706] mb-3"
+                dir="rtl"
+              />
+              <button
+                onClick={() => { if (addFeesAmt && Number(addFeesAmt) > 0) setAdminModal({ type: "add-fees" }); }}
+                className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
+                style={{ background: "linear-gradient(135deg,#d97706,#f59e0b)" }}>
+                إضافة الرسوم
+              </button>
+            </div>
+
+            {/* Pay Fees */}
+            <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fef2f2" }}>
+                  <Icon.AlertCircle />
+                </div>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم السحب</p>
+              </div>
+              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${user.withdrawalFeeStatus === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                  {user.withdrawalFeeStatus === "paid" ? "✓ تم السداد" : "● غير مسددة"}
+                </span>
+                <span className="font-extrabold text-[15px] text-[#ef4444]">{user.fees} ر.س</span>
+              </div>
+              <button
+                onClick={() => setAdminModal({ type: "pay-fees" })}
+                disabled={user.fees === "0" || user.withdrawalFeeStatus === "paid"}
+                className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                سداد رسوم السحب
+              </button>
+            </div>
+
+          </div>
+        </section>
+      )}
 
       <main className="flex flex-col gap-5 pb-8">
         {/* Financial Operations */}
@@ -981,6 +1199,153 @@ function UserDashboard({ user, onLogout, onBack }: { user: User; onLogout: () =>
         </section>
       </main>
 
+      {/* ── Popup Notification (on login) ──────────────────── */}
+      {showPopup && popupNotif && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
+          style={{ background: "rgba(10,15,40,0.6)", backdropFilter: "blur(5px)", fontFamily: "'Cairo', sans-serif" }}
+          dir="rtl">
+          <div className="w-full max-w-xs bg-white rounded-3xl overflow-hidden shadow-2xl"
+            style={{ animation: "popIn 0.3s cubic-bezier(.175,.885,.32,1.275)" }}>
+            <div className="px-5 pt-6 pb-3 text-center"
+              style={{ background: popupNotif.type === "profits_added" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : "linear-gradient(135deg,#2952e3,#7c3aed)" }}>
+              <div className="text-[36px] mb-1">{popupNotif.type === "profits_added" ? "🎉" : "📢"}</div>
+              <p className="text-white font-extrabold text-[15px]">إشعار جديد</p>
+            </div>
+            <div className="px-5 py-5">
+              <p className="font-extrabold text-[14px] text-[#1a1f3c] mb-3 text-center">{popupNotif.title}</p>
+              <div className="rounded-2xl p-4 mb-4 text-right text-[13px] leading-relaxed whitespace-pre-line font-medium text-[#374151]"
+                style={{ background: popupNotif.type === "profits_added" ? "#f0fdf4" : "#eff6ff", border: `1.5px solid ${popupNotif.type === "profits_added" ? "#bbf7d0" : "#bfdbfe"}` }}>
+                {popupNotif.message}
+              </div>
+              <button onClick={() => void dismissPopup()}
+                className="w-full py-3 rounded-2xl text-white font-bold text-[14px] transition-opacity active:opacity-90"
+                style={{ background: popupNotif.type === "profits_added" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : "linear-gradient(135deg,#2952e3,#7c3aed)" }}>
+                حسناً
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Notification Panel ──────────────────────────────── */}
+      {showNotifPanel && (
+        <div className="fixed inset-0 z-50 flex" dir="rtl"
+          style={{ fontFamily: "'Cairo', sans-serif" }}>
+          <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setShowNotifPanel(false)} />
+          <div className="w-full max-w-sm bg-white h-full overflow-y-auto flex flex-col shadow-2xl"
+            style={{ animation: "slideInRight 0.25s ease-out" }}>
+            <style>{`@keyframes slideInRight { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }`}</style>
+            {/* Panel Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6] sticky top-0 bg-white z-10">
+              <button onClick={() => setShowNotifPanel(false)}
+                className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282]">
+                <Icon.X />
+              </button>
+              <h2 className="font-extrabold text-[16px] text-[#1a1f3c]">الإشعارات</h2>
+              <div className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center">
+                <Icon.Bell />
+              </div>
+            </div>
+            {/* Notifications list */}
+            <div className="flex flex-col gap-0 flex-1">
+              {notifications.length === 0 && (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-[#8892a4]">
+                  <div className="text-[40px] mb-3">🔔</div>
+                  <p className="font-bold text-[13px]">لا توجد إشعارات</p>
+                </div>
+              )}
+              {notifications.map((n) => {
+                const { date, time } = fmtNotifDate(n.createdAt);
+                return (
+                  <div key={n.id} className="px-5 py-4 border-b border-[#eef0f6] text-right"
+                    style={{ background: n.isRead ? "white" : "#f5f7ff" }}>
+                    <div className="flex items-start gap-3">
+                      <div className="text-[24px] flex-shrink-0 mt-0.5">
+                        {n.type === "profits_added" ? "🎉" : "📢"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${n.isRead ? "bg-[#f3f5fa] text-[#8892a4]" : "bg-blue-100 text-blue-700"}`}>
+                            {n.isRead ? "✓ مقروء" : "● غير مقروء"}
+                          </span>
+                          <p className="font-extrabold text-[13px] text-[#1a1f3c]">{n.title}</p>
+                        </div>
+                        <p className="text-[11px] text-[#5a6282] font-medium leading-relaxed whitespace-pre-line mb-2">{n.message}</p>
+                        <div className="flex items-center gap-1 justify-end">
+                          <span className="text-[10px] text-[#8892a4] font-medium">{time}</span>
+                          <span className="text-[10px] text-[#8892a4]">—</span>
+                          <span className="text-[10px] text-[#8892a4] font-medium">{date}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin Confirmation Modal ─────────────────────────── */}
+      {adminModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
+          style={{ background: "rgba(10,15,40,0.6)", backdropFilter: "blur(4px)", fontFamily: "'Cairo', sans-serif" }}
+          dir="rtl">
+          <div className="w-full max-w-xs bg-white rounded-3xl overflow-hidden shadow-2xl"
+            style={{ animation: "popIn 0.25s cubic-bezier(.175,.885,.32,1.275)" }}>
+            {/* Modal Header */}
+            <div className="px-5 py-4 text-center border-b border-[#eef0f6]"
+              style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+              <p className="text-white font-extrabold text-[15px]">
+                {adminModal.type === "add-profits" ? "تأكيد إضافة الأرباح" : adminModal.type === "add-fees" ? "تأكيد إضافة الرسوم" : "تأكيد سداد رسوم السحب"}
+              </p>
+            </div>
+            <div className="px-5 py-5">
+              {adminModal.type === "add-profits" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">المبلغ المراد إضافته:</p>
+                  <p className="font-extrabold text-[20px] text-[#16a34a]">{Number(addProfitAmt).toLocaleString("en-US")} ر.س</p>
+                  <div className="mt-3 flex flex-col gap-1">
+                    <p className="text-[11px] font-bold text-[#374151]">سيتم:</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تحديث إجمالي الأرباح</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                  </div>
+                </div>
+              )}
+              {adminModal.type === "add-fees" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fef3c7", border: "1.5px solid #fde68a" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ الرسوم المراد إضافته:</p>
+                  <p className="font-extrabold text-[20px] text-[#d97706]">{Number(addFeesAmt).toLocaleString("en-US")} ر.س</p>
+                </div>
+              )}
+              {adminModal.type === "pay-fees" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fef2f2", border: "1.5px solid #fecaca" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">قيمة رسوم السحب:</p>
+                  <p className="font-extrabold text-[20px] text-[#ef4444]">{user.fees} ر.س</p>
+                  <div className="mt-3 flex flex-col gap-1">
+                    <p className="text-[11px] font-bold text-[#374151]">سيتم:</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تصفير رسوم السحب</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تغيير الحالة إلى "تم السداد"</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setAdminModal(null)} disabled={adminLoading}
+                  className="flex-1 py-2.5 rounded-xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[13px] hover:bg-[#f3f5fa] transition-colors disabled:opacity-50">
+                  إلغاء
+                </button>
+                <button onClick={() => void handleAdminFinancial()} disabled={adminLoading}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-50"
+                  style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                  {adminLoading ? "جارٍ..." : "تأكيد"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showWithdraw && (
         <WithdrawModal
           onClose={() => setShowWithdraw(false)}
@@ -1074,6 +1439,7 @@ const emptyUser: Omit<User, "id"> = {
   loginTitle: "",
   loginSlug: "",
   telegramLink: "",
+  withdrawalFeeStatus: "unpaid",
 };
 
 function UserFormModal({
@@ -1555,6 +1921,7 @@ function AdminDashboard({
             loginTitle: editingUser.loginTitle ?? "",
             loginSlug: editingUser.loginSlug ?? "",
             telegramLink: editingUser.telegramLink ?? "",
+            withdrawalFeeStatus: editingUser.withdrawalFeeStatus ?? "unpaid",
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}
@@ -1672,6 +2039,7 @@ export default function App() {
           user={activeUser}
           onLogout={() => setView({ page: "login" })}
           onBack={view.fromAdmin ? () => setView({ page: "admin" }) : undefined}
+          onRefreshUser={view.fromAdmin ? refreshUsers : undefined}
         />
       )}
       {view.page === "user" && !activeUser && loadingUsers && (
