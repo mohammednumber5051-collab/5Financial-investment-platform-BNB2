@@ -593,23 +593,163 @@ function ClientLoginPage({ slug, onLogin }: { slug: string; onLogin: (view: View
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   CHANGE CREDENTIALS MODAL
+═══════════════════════════════════════════════════════════════ */
+
+function ChangeCredentialsModal({ onClose, userId, currentUsername, onSaved }: {
+  onClose: () => void;
+  userId: string;
+  currentUsername: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [username, setUsername] = useState(currentUsername);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  async function handleSave() {
+    setError("");
+    if (!username.trim()) { setError("اسم المستخدم مطلوب"); return; }
+    if (password && password !== confirmPassword) { setError("كلمة المرور غير متطابقة"); return; }
+    if (password && password.length < 6) { setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل"); return; }
+    setLoading(true);
+    try {
+      const body: { username: string; password?: string } = { username: username.trim() };
+      if (password) body.password = password;
+      await apiFetch(`/beneficiaries/${userId}`, { method: "PUT", body: JSON.stringify(body) });
+      await onSaved();
+      setSuccess(true);
+      setTimeout(onClose, 1200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "فشلت العملية");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-5"
+      style={{ background: "rgba(10,15,40,0.6)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+        style={{ fontFamily: "'Cairo', sans-serif" }} dir="rtl">
+        <div className="px-6 pt-7 pb-4">
+          <div className="flex items-center justify-end gap-2 mb-1">
+            <h3 className="text-[18px] font-extrabold text-[#1a1f3c]">تعديل بيانات الدخول</h3>
+            <span className="text-[20px]">🔐</span>
+          </div>
+          <p className="text-[12px] text-[#8892a4] font-medium">يمكنك تغيير اسم المستخدم أو كلمة المرور</p>
+        </div>
+        <div className="h-px bg-[#f0f2f7] mx-5" />
+        <div className="px-6 py-5 flex flex-col gap-4">
+          <div>
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">اسم المستخدم</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl text-[13px] font-semibold text-right outline-none transition-all"
+              style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#1a1f3c" }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">كلمة المرور الجديدة</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="اتركها فارغة إذا لا تريد التغيير"
+              className="w-full px-4 py-3 rounded-2xl text-[13px] font-semibold text-right outline-none transition-all"
+              style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#1a1f3c" }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+            />
+          </div>
+          {password && (
+            <div>
+              <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">تأكيد كلمة المرور</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="أعد إدخال كلمة المرور"
+                className="w-full px-4 py-3 rounded-2xl text-[13px] font-semibold text-right outline-none transition-all"
+                style={{ border: "1.5px solid #e2e8f0", background: "white", color: "#1a1f3c" }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#2952e3"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+              />
+            </div>
+          )}
+          {error && (
+            <div className="rounded-2xl px-4 py-3 text-right text-[12px] font-bold text-[#dc2626]"
+              style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="rounded-2xl px-4 py-3 text-right text-[12px] font-bold text-[#16a34a]"
+              style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+              تم الحفظ بنجاح ✅
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 px-5 pb-6">
+          <button onClick={onClose} disabled={loading}
+            className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-colors hover:bg-[#f3f5fa]"
+            style={{ border: "1.5px solid #e2e8f0", color: "#5a6282", background: "white" }}>
+            إلغاء
+          </button>
+          <button onClick={() => void handleSave()} disabled={loading}
+            className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
+            style={{ background: "linear-gradient(135deg,#2952e3 0%,#7c3aed 100%)", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "جاري الحفظ..." : "حفظ"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    USER DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
-function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
+function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus }: {
   onClose: () => void;
   maxAmount: string;
   iban: string;
   fees: string;
   userName: string;
+  withdrawalFeeStatus: "unpaid" | "paid";
 }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
   const [submitTime, setSubmitTime] = useState("");
 
-  const feesNum = parseFloat(fees.replace(/,/g, ""));
+  const feesNum = parseFloat(fees.replace(/,/g, "")) || 0;
+  const profitsNum = parseFloat(maxAmount.replace(/,/g, "")) || 0;
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
   const netAmount = amountNum - feesNum;
+
+  function getFailureMessage() {
+    if (profitsNum === 0 && feesNum === 0) {
+      return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
+    }
+    if (profitsNum > 0 && feesNum > 0 && withdrawalFeeStatus === "unpaid") {
+      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
+    }
+    if (profitsNum > 0 && feesNum === 0 && withdrawalFeeStatus === "paid") {
+      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد الارباح يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 48 ساعة ويتم سحب ارباحك بنجاح ✅`;
+    }
+    if (profitsNum > 0 && feesNum > 0 && withdrawalFeeStatus === "paid") {
+      return `عزيز العميل / ${userName} 🚨 تعذر تحويل الأرباح بسبب المتبقي عليك مبلغ رسوم الأرباح المضافة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
+    }
+    return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
+  }
 
   function formatNum(n: number) {
     return n.toLocaleString("en-US");
@@ -700,8 +840,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName }: {
             <div className="rounded-2xl p-4 text-right" style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}>
               <p className="text-[13px] font-extrabold text-[#1a1f3c] mb-2">سبب الفشل:</p>
               <p className="text-[13px] font-medium text-[#374151] leading-relaxed">
-                عزيز العميل / {userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة{" "}
-                <span className="font-extrabold text-[#dc2626]">{fees}</span> ريال بعد السداد يتم التحويل ارباحك بنجاح ✅
+                {getFailureMessage()}
               </p>
             </div>
             <div className="text-right">
@@ -823,6 +962,7 @@ function UserDashboard({
   user: User; onLogout: () => void; onBack?: () => void; onRefreshUser?: () => Promise<void>;
 }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [depositToast, setDepositToast] = useState(false);
   const [depositCountdown, setDepositCountdown] = useState(5);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -930,6 +1070,18 @@ function UserDashboard({
               <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
                 <span className="text-[9px]">الريال السعودي (ر.س)</span>
               </button>
+              {!onBack && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[#d0d7e8] shadow-sm hover:bg-gray-50 transition-colors"
+                  style={{ color: "#5a6282" }}
+                  title="إعدادات الحساب">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={onLogout}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
@@ -1346,6 +1498,15 @@ function UserDashboard({
         </div>
       )}
 
+      {showSettings && (
+        <ChangeCredentialsModal
+          onClose={() => setShowSettings(false)}
+          userId={user.id}
+          currentUsername={user.username}
+          onSaved={async () => { await onRefreshUser?.(); }}
+        />
+      )}
+
       {showWithdraw && (
         <WithdrawModal
           onClose={() => setShowWithdraw(false)}
@@ -1353,6 +1514,7 @@ function UserDashboard({
           iban={user.iban}
           fees={user.fees}
           userName={user.name}
+          withdrawalFeeStatus={user.withdrawalFeeStatus}
         />
       )}
 
