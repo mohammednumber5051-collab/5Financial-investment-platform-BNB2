@@ -93,9 +93,13 @@ router.post("/beneficiaries/:id/add-fees", async (req, res): Promise<void> => {
     const newFees = currentFees + amount;
     const formatted = newFees.toLocaleString("en-US");
 
+    // If the user previously paid fees (status = "paid"), keep that status so the
+    // UI can show the "رسوم الأرباح المضافة" message instead of the first-time message.
+    const newStatus = current.withdrawalFeeStatus === "paid" ? "paid" : "unpaid";
+
     const [updated] = await db
       .update(beneficiariesTable)
-      .set({ fees: formatted, withdrawalFeeStatus: "unpaid" })
+      .set({ fees: formatted, withdrawalFeeStatus: newStatus })
       .where(eq(beneficiariesTable.id, id))
       .returning();
 
