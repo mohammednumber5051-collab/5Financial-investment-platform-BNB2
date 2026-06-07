@@ -718,13 +718,14 @@ function ChangeCredentialsModal({ onClose, userId, currentUsername, onSaved }: {
    USER DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
-function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus }: {
+function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus, hasPreviousPayment }: {
   onClose: () => void;
   maxAmount: string;
   iban: string;
   fees: string;
   userName: string;
   withdrawalFeeStatus: "unpaid" | "paid";
+  hasPreviousPayment: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
@@ -736,17 +737,21 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const netAmount = amountNum - feesNum;
 
   function getFailureMessage() {
+    // الحالة 1: لا أرباح ولا رسوم — مشترك جديد
     if (profitsNum === 0 && feesNum === 0) {
       return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
     }
-    if (profitsNum > 0 && feesNum > 0 && withdrawalFeeStatus === "unpaid") {
+    // الحالة 4: أرباح > 0 + رسوم > 0 + لديه سداد سابق (أضاف الأدمن رسوماً جديدة بعد السداد)
+    if (profitsNum > 0 && feesNum > 0 && hasPreviousPayment) {
+      return `عزيز العميل / ${userName} 🚨 تعذر تحويل الأرباح بسبب المتبقي عليك مبلغ رسوم الأرباح المضافة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
+    }
+    // الحالة 2: أرباح > 0 + رسوم > 0 + لا يوجد سداد سابق — أول مرة
+    if (profitsNum > 0 && feesNum > 0) {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
+    // الحالة 3: أرباح > 0 + رسوم = 0 + تم السداد — انتظار تفعيل السحب
     if (profitsNum > 0 && feesNum === 0 && withdrawalFeeStatus === "paid") {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد الارباح يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 48 ساعة ويتم سحب ارباحك بنجاح ✅`;
-    }
-    if (profitsNum > 0 && feesNum > 0 && withdrawalFeeStatus === "paid") {
-      return `عزيز العميل / ${userName} 🚨 تعذر تحويل الأرباح بسبب المتبقي عليك مبلغ رسوم الأرباح المضافة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
     return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
   }
@@ -1515,6 +1520,7 @@ function UserDashboard({
           fees={user.fees}
           userName={user.name}
           withdrawalFeeStatus={user.withdrawalFeeStatus}
+          hasPreviousPayment={notifications.some((n) => n.type === "fees_paid")}
         />
       )}
 
