@@ -2116,9 +2116,19 @@ function AdminDashboard({
 /* ═══════════════════════════════════════════════════════════════
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
+
+// Safe localStorage wrappers — embedded browsers (Telegram, Instagram, etc.)
+// may throw SecurityError or have localStorage disabled entirely.
+function safeStorageGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeStorageSet(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+}
+
 function loadLocalUsers(): User[] {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = safeStorageGet(STORAGE_KEY);
     if (stored) return JSON.parse(stored) as User[];
   } catch { /* ignore */ }
   return initialUsers;
@@ -2138,7 +2148,7 @@ export default function App() {
       const mapped = data.map(mapApiUser);
       setUsers(mapped);
       // also keep localStorage in sync as fallback
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(mapped)); } catch { /* ignore */ }
+      safeStorageSet(STORAGE_KEY, JSON.stringify(mapped));
     } catch {
       // API unavailable → fall back to localStorage
       setUsers(loadLocalUsers());

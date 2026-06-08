@@ -31,7 +31,9 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
+    ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
+      ? [runtimeErrorOverlay()]
+      : []),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
@@ -63,6 +65,9 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    hmr: {
+      overlay: false,
+    },
     fs: {
       strict: true,
     },
