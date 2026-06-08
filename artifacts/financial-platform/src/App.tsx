@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 interface User {
   id: string;
   username: string;
-  password: string;
   name: string;
   profits: string;
   subscription: string;
@@ -55,7 +54,6 @@ function mapApiUser(u: ApiUser): User {
   return {
     id: String(u.id),
     username: u.username,
-    password: u.password,
     name: u.name,
     profits: u.profits,
     subscription: u.subscription,
@@ -77,60 +75,8 @@ function getClientSlugFromUrl(): string | null {
   return match ? match[1] : null;
 }
 
-/* ─── Mock Data ─────────────────────────────────────────────── */
-const initialUsers: User[] = [
-  {
-    id: "u1",
-    username: "abdulrahman",
-    password: "Ab@123456",
-    name: "عبدالرحمن سعيد يحيى ال فروان",
-    profits: "17,400",
-    subscription: "1,000",
-    fees: "3,610",
-    accountHolder: "عبدالرحمن سعيد يحيى ال فروان",
-    iban: "SA15 8000 0220 6080 1030 8884",
-    phone: "+966 5X XXX XXXX",
-    status: "active",
-    loginTitle: "",
-    loginSlug: "",
-    telegramLink: "",
-    withdrawalFeeStatus: "unpaid",
-  },
-  {
-    id: "u2",
-    username: "khalid_m",
-    password: "Kh@789012",
-    name: "خالد محمد العمري",
-    profits: "8,250",
-    subscription: "1,000",
-    fees: "3,610",
-    accountHolder: "خالد محمد العمري",
-    iban: "SA29 6000 0100 0001 2345 6789",
-    phone: "+966 5X XXX XXXX",
-    status: "active",
-    loginTitle: "",
-    loginSlug: "",
-    telegramLink: "",
-    withdrawalFeeStatus: "unpaid",
-  },
-  {
-    id: "u3",
-    username: "fatima_a",
-    password: "Fa@345678",
-    name: "فاطمة أحمد القحطاني",
-    profits: "4,900",
-    subscription: "1,000",
-    fees: "3,610",
-    accountHolder: "فاطمة أحمد القحطاني",
-    iban: "SA36 8000 0000 6080 1031 0009",
-    phone: "+966 5X XXX XXXX",
-    status: "disabled",
-    loginTitle: "",
-    loginSlug: "",
-    telegramLink: "",
-    withdrawalFeeStatus: "unpaid",
-  },
-];
+/* ─── Mock Data (fallback, no passwords) ─────────────────────── */
+const initialUsers: User[] = [];
 
 
 /* ─── SVG Icons ──────────────────────────────────────────────── */
@@ -268,7 +214,7 @@ function CardIconBtn({ children, bg = "rgba(255,255,255,0.25)" }: { children: Re
 /* ═══════════════════════════════════════════════════════════════
    LOGIN PAGE
 ═══════════════════════════════════════════════════════════════ */
-function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: User[] }) {
+function LoginPage({ onLogin }: { onLogin: (view: View) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -294,16 +240,19 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
         onLogin({ page: "admin" });
         return;
       }
-      // Not admin — check beneficiaries
-      const found = users.find(
-        (u) => u.username === username.trim() && u.password === password
-      );
-      if (found) {
-        if (found.status === "disabled") {
-          setError("هذا الحساب معطّل. تواصل مع الإدارة");
-          return;
-        }
-        onLogin({ page: "user", userId: found.id });
+      // Not admin — try beneficiary login via server
+      const benRes = await fetch("/api/auth/beneficiary/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (benRes.status === 403) {
+        setError("هذا الحساب معطّل. تواصل مع الإدارة");
+        return;
+      }
+      if (benRes.ok) {
+        const { id } = await benRes.json() as { id: number };
+        onLogin({ page: "user", userId: String(id) });
         return;
       }
       setError("اسم المستخدم أو كلمة المرور غير صحيحة");
@@ -439,26 +388,34 @@ function ClientLoginPage({ slug, onLogin }: { slug: string; onLogin: (view: View
       .catch(() => setNotFound(true));
   }, [slug]);
 
-  function handleLogin() {
+  async function handleLogin() {
     setError("");
     if (!username.trim() || !password.trim()) {
       setError("يرجى إدخال اسم المستخدم وكلمة المرور");
       return;
     }
-    if (!beneficiary) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (username !== beneficiary.username || password !== beneficiary.password) {
-        setError("اسم المستخدم أو كلمة المرور غير صحيحة");
-        return;
-      }
-      if (beneficiary.status === "disabled") {
+    try {
+      const res = await fetch("/api/auth/beneficiary/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (res.status === 403) {
         setError("هذا الحساب معطّل. تواصل مع الإدارة");
         return;
       }
-      onLogin({ page: "user", userId: beneficiary.id });
-    }, 600);
+      if (!res.ok) {
+        setError("اسم المستخدم أو كلمة المرور غير صحيحة");
+        return;
+      }
+      const { id } = await res.json() as { id: number };
+      onLogin({ page: "user", userId: String(id) });
+    } catch {
+      setError("تعذر الاتصال بالخادم، حاول مجدداً");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (notFound) {
@@ -1598,7 +1555,9 @@ function UserDashboard({
    ADMIN DASHBOARD (BENEFICIARIES)
 ═══════════════════════════════════════════════════════════════ */
 
-const emptyUser: Omit<User, "id"> = {
+type UserFormData = Omit<User, "id"> & { password: string };
+
+const emptyUser: UserFormData = {
   username: "",
   password: "",
   name: "",
@@ -1622,8 +1581,8 @@ function UserFormModal({
   onClose,
 }: {
   mode: "create" | "edit";
-  initial: Omit<User, "id">;
-  onSave: (data: Omit<User, "id">) => void;
+  initial: UserFormData;
+  onSave: (data: UserFormData) => void;
   onClose: () => void;
 }) {
   const [form, setForm] = useState(initial);
@@ -1774,7 +1733,7 @@ function AdminDashboard({
     });
   }
 
-  async function handleCreate(data: Omit<User, "id">) {
+  async function handleCreate(data: UserFormData) {
     setSaving(true);
     try {
       await apiFetch("/beneficiaries", {
@@ -1790,7 +1749,7 @@ function AdminDashboard({
     }
   }
 
-  async function handleEdit(data: Omit<User, "id">) {
+  async function handleEdit(data: UserFormData) {
     if (modal.type !== "edit") return;
     setSaving(true);
     try {
@@ -1924,7 +1883,7 @@ function AdminDashboard({
                     {showPassId === user.id ? <Icon.EyeOff /> : <Icon.Eye />}
                   </button>
                   <span className="text-[12px] font-semibold text-[#1a1f3c]" dir="ltr">
-                    {showPassId === user.id ? user.password : "••••••••"}
+                    ••••••••
                   </span>
                 </div>
               </div>
@@ -2082,7 +2041,7 @@ function AdminDashboard({
           mode="edit"
           initial={{
             username: editingUser.username,
-            password: editingUser.password,
+            password: "",
             name: editingUser.name,
             profits: editingUser.profits,
             subscription: editingUser.subscription,
@@ -2205,7 +2164,6 @@ export default function App() {
       )}
       {view.page === "login" && (
         <LoginPage
-          users={users}
           onLogin={(v) => setView(v)}
         />
       )}

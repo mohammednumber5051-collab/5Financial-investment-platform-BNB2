@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 export const beneficiariesTable = pgTable("beneficiaries", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  passwordHash: text("password_hash").notNull().default(""),
   name: text("name").notNull(),
   profits: text("profits").notNull().default("0"),
   subscription: text("subscription").notNull().default("0"),
@@ -26,6 +26,7 @@ export const insertBeneficiarySchema = createInsertSchema(beneficiariesTable).om
   id: true,
   createdAt: true,
   updatedAt: true,
+  passwordHash: true,
 });
 
 export const updateBeneficiarySchema = insertBeneficiarySchema.partial();

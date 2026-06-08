@@ -1,12 +1,21 @@
 import { Router, type IRouter } from "express";
 import { db, beneficiariesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns } from "drizzle-orm";
+import bcrypt from "bcrypt";
 
 const router: IRouter = Router();
 
+function safeColumns() {
+  const { passwordHash: _ph, ...rest } = getTableColumns(beneficiariesTable);
+  return rest;
+}
+
 router.get("/beneficiaries", async (req, res) => {
   try {
-    const rows = await db.select().from(beneficiariesTable).orderBy(beneficiariesTable.createdAt);
+    const rows = await db
+      .select(safeColumns())
+      .from(beneficiariesTable)
+      .orderBy(beneficiariesTable.createdAt);
     res.json(rows);
   } catch (err) {
     req.log.error(err);
@@ -18,7 +27,7 @@ router.get("/beneficiaries/by-slug/:slug", async (req, res): Promise<void> => {
   try {
     const slug = req.params.slug;
     const [row] = await db
-      .select()
+      .select(safeColumns())
       .from(beneficiariesTable)
       .where(eq(beneficiariesTable.loginSlug, slug))
       .limit(1);
@@ -50,11 +59,12 @@ router.post("/beneficiaries", async (req, res) => {
       loginSlug: string;
       telegramLink: string;
     };
+    const passwordHash = body.password ? await bcrypt.hash(body.password, 12) : "";
     const [row] = await db
       .insert(beneficiariesTable)
       .values({
         username: body.username,
-        password: body.password,
+        passwordHash,
         name: body.name,
         profits: body.profits ?? "0",
         subscription: body.subscription ?? "0",
@@ -68,7 +78,8 @@ router.post("/beneficiaries", async (req, res) => {
         telegramLink: body.telegramLink ?? "",
       })
       .returning();
-    res.status(201).json(row);
+    const { passwordHash: _ph, ...safe } = row;
+    res.status(201).json(safe);
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "فشل إضافة المستفيد" });
@@ -93,27 +104,30 @@ router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
       loginSlug: string;
       telegramLink: string;
     }>;
+
+    const updates: Record<string, unknown> = {};
+    if (body.username !== undefined) updates.username = body.username;
+    if (body.password) updates.passwordHash = await bcrypt.hash(body.password, 12);
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.profits !== undefined) updates.profits = body.profits;
+    if (body.subscription !== undefined) updates.subscription = body.subscription;
+    if (body.fees !== undefined) updates.fees = body.fees;
+    if (body.accountHolder !== undefined) updates.accountHolder = body.accountHolder;
+    if (body.iban !== undefined) updates.iban = body.iban;
+    if (body.phone !== undefined) updates.phone = body.phone;
+    if (body.status !== undefined) updates.status = body.status;
+    if (body.loginTitle !== undefined) updates.loginTitle = body.loginTitle;
+    if (body.loginSlug !== undefined) updates.loginSlug = body.loginSlug;
+    if (body.telegramLink !== undefined) updates.telegramLink = body.telegramLink;
+
     const [row] = await db
       .update(beneficiariesTable)
-      .set({
-        ...(body.username !== undefined && { username: body.username }),
-        ...(body.password !== undefined && { password: body.password }),
-        ...(body.name !== undefined && { name: body.name }),
-        ...(body.profits !== undefined && { profits: body.profits }),
-        ...(body.subscription !== undefined && { subscription: body.subscription }),
-        ...(body.fees !== undefined && { fees: body.fees }),
-        ...(body.accountHolder !== undefined && { accountHolder: body.accountHolder }),
-        ...(body.iban !== undefined && { iban: body.iban }),
-        ...(body.phone !== undefined && { phone: body.phone }),
-        ...(body.status !== undefined && { status: body.status }),
-        ...(body.loginTitle !== undefined && { loginTitle: body.loginTitle }),
-        ...(body.loginSlug !== undefined && { loginSlug: body.loginSlug }),
-        ...(body.telegramLink !== undefined && { telegramLink: body.telegramLink }),
-      })
+      .set(updates)
       .where(eq(beneficiariesTable.id, id))
       .returning();
     if (!row) { res.status(404).json({ error: "المستفيد غير موجود" }); return; }
-    res.json(row);
+    const { passwordHash: _ph, ...safe } = row;
+    res.json(safe);
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "فشل تعديل المستفيد" });
