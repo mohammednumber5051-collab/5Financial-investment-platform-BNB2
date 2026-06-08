@@ -132,8 +132,6 @@ const initialUsers: User[] = [
   },
 ];
 
-const ADMIN_USERNAME = "Assubaihi";
-const ADMIN_PASSWORD = "admin123";
 
 /* ─── SVG Icons ──────────────────────────────────────────────── */
 const Icon = {
@@ -277,7 +275,7 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
+  async function handleLogin() {
     setError("");
     if (!username.trim() || !password.trim()) {
       setError("يرجى إدخال اسم المستخدم وكلمة المرور");
@@ -285,14 +283,20 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    try {
+      // Try admin login via backend first (credentials never leave the server)
+      const res = await fetch("/api/auth/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (res.ok) {
         onLogin({ page: "admin" });
         return;
       }
+      // Not admin — check beneficiaries
       const found = users.find(
-        (u) => u.username === username && u.password === password
+        (u) => u.username === username.trim() && u.password === password
       );
       if (found) {
         if (found.status === "disabled") {
@@ -303,7 +307,11 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
         return;
       }
       setError("اسم المستخدم أو كلمة المرور غير صحيحة");
-    }, 600);
+    } catch {
+      setError("تعذر الاتصال بالخادم، حاول مجدداً");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -1849,7 +1857,7 @@ function AdminDashboard({
           </button>
           <div className="text-right">
             <h1 className="text-[19px] font-extrabold text-[#1a1f3c]">قائمة المستفيدين</h1>
-            <p className="text-[11px] text-[#5a6282] font-medium">مرحباً، {ADMIN_USERNAME}</p>
+            <p className="text-[11px] text-[#5a6282] font-medium">مرحباً، المدير</p>
           </div>
         </div>
       </div>
