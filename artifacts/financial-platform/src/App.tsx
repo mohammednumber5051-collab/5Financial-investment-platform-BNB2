@@ -321,7 +321,6 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
         <div className="absolute -bottom-16 -left-16 w-64 h-64 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.2)" }} />
         <div className="absolute top-1/2 left-1/4 w-40 h-40 rounded-full opacity-5" style={{ background: "rgba(255,255,255,0.4)" }} />
       </div>
-
       <div className="w-full max-w-sm relative z-10">
         {/* Logo / Title */}
         <div className="text-center mb-8">
@@ -408,9 +407,7 @@ function LoginPage({ onLogin, users }: { onLogin: (view: View) => void; users: U
           </button>
         </div>
 
-        <p className="text-center text-white/40 text-[11px] font-medium mt-6">
-          المنصة المالية © 2025
-        </p>
+        <p className="text-center text-white/40 text-[11px] font-medium mt-6">المنصة المالية © 2026</p>
       </div>
     </div>
   );
