@@ -733,8 +733,8 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
   const netAmount = amountNum - feesNum;
 
-  const phase2Active = hours24Passed(user.withdrawalFeePaidAt);
-  const phase3Active = hours24Passed(user.liberationFeePaidAt);
+  const phase2Active = hours24Passed(user.liberationFeePaidAt);
+  const phase3Active = hours24Passed(user.withdrawalFeePaidAt);
 
   function getFailureMessage() {
     // المرحلة الثالثة: مبلغ المعاملة
@@ -744,14 +744,14 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
       }
       return `عزيزي العميل/ ${userName}\nتعذر سحب  الأرباح\nالمتبقي عليكم دفع مبلغ  المعاملة "${user.transactionFee}" ريال لنتمكن من تأكيد تحويل أرباحك بنجاح\n🛑ملاحظة هامة 🚸♨️ الغرض من المعاملة\nمعاملات تسجيل الخروج من الشركة ضمن المتطلبات المتفق عليها🤝👍`;
     }
-    // المرحلة الثانية: رسوم تحرير الأرباح
+    // المرحلة الثانية: رسوم السحب
     if (phase2Active) {
-      if (user.liberationFeeStatus === "paid") {
-        return `عزيز العميل / ${userName} 🚨 تم تأكيد سداد رسوم تحرير الأرباح بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بتحرير  الأرباح  خلال أقل من 24 ساعة\nويتم تحرير أرباحك بنجاح ✅`;
+      if (user.withdrawalFeeStatus === "paid") {
+        return `عزيز العميل / ${userName} 🚨 تم تأكيد سداد رسوم السحب بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بتحرير الأرباح خلال أقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
       }
-      return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب  الأرباح  يرجى دفع  مبلغ رسوم تحرير  "${user.liberationFee}" ريال  بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+      return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم السحب "${fees}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
     }
-    // المرحلة الأولى: رسوم السحب (الوضع الحالي)
+    // المرحلة الأولى: رسوم التحرير (الوضع الحالي)
     if (profitsNum === 0 && feesNum === 0) {
       return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
     }
@@ -761,8 +761,8 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
     if (profitsNum > 0 && feesNum > 0) {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
-    if (profitsNum > 0 && feesNum === 0 && withdrawalFeeStatus === "paid") {
-      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم السحب يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
+    if (user.liberationFeeStatus === "paid") {
+      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم التحرير يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
     }
     return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
   }
@@ -1211,7 +1211,7 @@ function UserDashboard({
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fef2f2" }}>
                   <Icon.AlertCircle />
                 </div>
-                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم السحب — المرحلة الأولى</p>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم السحب — المرحلة الثانية</p>
               </div>
               <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
                 <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${user.withdrawalFeeStatus === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
@@ -1239,7 +1239,7 @@ function UserDashboard({
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fdf2f8" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 </div>
-                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم تحرير الأرباح — المرحلة الثانية</p>
+                <p className="font-bold text-[13px] text-[#1a1f3c]">رسوم تحرير الأرباح — المرحلة الأولى</p>
               </div>
               <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">الرسوم الحالية: <span className="text-[#8B1A1A] font-extrabold">{user.liberationFee} ر.س</span></div>
               <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl" style={{ background: "#fdf2f8", border: "1px solid #f5c6d8" }}>
@@ -1418,25 +1418,25 @@ function UserDashboard({
               </div>
             </div>
 
-            {/* Fees — Phase 1 */}
-            {user.withdrawalFeeStatus === "unpaid" ? (
+            {/* Liberation Fee Card — Phase 1 */}
+            {user.liberationFeeStatus === "unpaid" ? (
               <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                style={{ background: "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
                 <div className="flex items-start justify-between mb-7 relative z-10">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <Icon.AlertCircle />
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                   </div>
                   <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
                     style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
                 </div>
                 <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
                   <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                    {user.fees} <span className="text-[19px]">ر.س</span>
+                    {user.liberationFee} <span className="text-[19px]">ر.س</span>
                   </p>
-                  <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لكل عملية سحب</p>
+                  <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لتحرير الأرباح</p>
                 </div>
               </div>
             ) : (
@@ -1452,42 +1452,42 @@ function UserDashboard({
                     style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.2)" }}>✅ تم السداد</span>
                 </div>
                 <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
-                  <p className="text-white font-extrabold text-[22px] leading-none">تم تسديد رسوم السحب ✅</p>
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
+                  <p className="text-white font-extrabold text-[22px] leading-none">تم تسديد رسوم التحرير ✅</p>
                   <p className="text-white/70 text-[11px] font-medium mt-2">جارٍ معالجة طلبك...</p>
                 </div>
               </div>
             )}
 
-            {/* Liberation Fee Card — Phase 2 (shows after 24h from phase 1 payment) */}
-            {hours24Passed(user.withdrawalFeePaidAt) && (
+            {/* Withdrawal Fee Card — Phase 2 (shows after 24h from phase 1 payment) */}
+            {hours24Passed(user.liberationFeePaidAt) && (
               <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
+                style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
+                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
                 <div className="flex items-start justify-between mb-7 relative z-10">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <Icon.AlertCircle />
                   </div>
                   <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
                     style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    {user.liberationFeeStatus === "paid" ? "✅ تم السداد" : "🔴 مطلوب"}
+                    {user.withdrawalFeeStatus === "paid" ? "✅ تم السداد" : "🔴 مطلوب"}
                   </span>
                 </div>
                 <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
+                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
                   <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                    {user.liberationFee} <span className="text-[19px]">ر.س</span>
+                    {user.fees} <span className="text-[19px]">ر.س</span>
                   </p>
                   <p className="text-white/70 text-[11px] font-medium mt-2">
-                    {user.liberationFeeStatus === "paid" ? "جارٍ تحرير الأرباح..." : "يرجى سداد رسوم تحرير الأرباح"}
+                    {user.withdrawalFeeStatus === "paid" ? "جارٍ معالجة السحب..." : "يرجى سداد رسوم السحب"}
                   </p>
                 </div>
               </div>
             )}
 
             {/* Transaction Fee Card — Phase 3 (shows after 24h from phase 2 payment) */}
-            {hours24Passed(user.liberationFeePaidAt) && (
+            {hours24Passed(user.withdrawalFeePaidAt) && (
               <div className="rounded-3xl p-5 relative overflow-hidden"
                 style={{ background: "linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 70%,#d97706 100%)" }}>
                 <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
@@ -1703,7 +1703,7 @@ function UserDashboard({
                   <div className="mt-3 flex flex-col gap-1">
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد رسوم السحب</p>
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
-                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثانية</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثالثة</p>
                   </div>
                 </div>
               )}
@@ -1720,7 +1720,7 @@ function UserDashboard({
                   <div className="mt-3 flex flex-col gap-1">
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد رسوم التحرير</p>
                     <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
-                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثالثة</p>
+                    <p className="text-[11px] text-[#16a34a] font-semibold">✓ بدء العد التنازلي 24 ساعة للمرحلة الثانية</p>
                   </div>
                 </div>
               )}

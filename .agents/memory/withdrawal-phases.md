@@ -6,12 +6,15 @@ description: How the 3-phase withdrawal process works including DB fields, API r
 # 3-Phase Withdrawal Flow
 
 ## Phase Progression
-- Phase 1: Withdrawal fees (`fees` field, `withdrawalFeeStatus`, `withdrawalFeePaidAt`)
-- Phase 2: Liberation fees (`liberationFee`, `liberationFeeStatus`, `liberationFeePaidAt`) — shows 24h after phase 1 `withdrawalFeePaidAt`
-- Phase 3: Transaction fee (`transactionFee`, `transactionFeeStatus`, `transactionFeePaidAt`) — shows 24h after phase 2 `liberationFeePaidAt`
+- Phase 1: Liberation fees (`liberationFee`, `liberationFeeStatus`, `liberationFeePaidAt`) — shown first, always visible
+- Phase 2: Withdrawal fees (`fees` field, `withdrawalFeeStatus`, `withdrawalFeePaidAt`) — shows 24h after phase 1 `liberationFeePaidAt`
+- Phase 3: Transaction fee (`transactionFee`, `transactionFeeStatus`, `transactionFeePaidAt`) — shows 24h after phase 2 `withdrawalFeePaidAt`
 
 ## Key Rule
-Phase transitions are time-based on the frontend using `hours24Passed(dateStr)` helper. The DB stores timestamps; the frontend decides which phase card to show. There is no explicit `withdrawalPhase` field in DB.
+Phase transitions are time-based on the frontend using `hours24Passed(dateStr)` helper. The DB stores timestamps; the frontend derives which phase card to show. There is no explicit `withdrawalPhase` field in DB.
+
+- `phase2Active = hours24Passed(user.liberationFeePaidAt)`
+- `phase3Active = hours24Passed(user.withdrawalFeePaidAt)`
 
 **Why:** Keeps the backend simple; the frontend derives current state from timestamps.
 
