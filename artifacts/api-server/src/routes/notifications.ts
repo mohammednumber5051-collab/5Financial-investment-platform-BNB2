@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, notificationsTable, beneficiariesTable, financialTransactionsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -365,6 +365,33 @@ router.delete("/transactions/:id/undo", async (req, res): Promise<void> => {
     }
 
     await db.delete(financialTransactionsTable).where(eq(financialTransactionsTable.id, id));
+
+    const notifTypeMap: Record<string, string> = {
+      add_profits: "profits_added",
+      pay_withdrawal_fees: "fees_paid",
+      pay_liberation_fee: "liberation_fee_paid",
+      pay_transaction_fee: "transaction_fee_paid",
+    };
+
+    const notifType = notifTypeMap[tx.type];
+    if (notifType) {
+      const [latestNotif] = await db
+        .select()
+        .from(notificationsTable)
+        .where(
+          and(
+            eq(notificationsTable.beneficiaryId, tx.beneficiaryId),
+            eq(notificationsTable.type, notifType),
+            eq(notificationsTable.isRead, false),
+          ),
+        )
+        .orderBy(desc(notificationsTable.createdAt))
+        .limit(1);
+
+      if (latestNotif) {
+        await db.delete(notificationsTable).where(eq(notificationsTable.id, latestNotif.id));
+      }
+    }
 
     res.json({ beneficiary: updatedBeneficiary });
   } catch (err) {
