@@ -1002,6 +1002,8 @@ function UserDashboard({
   const [adminLoading, setAdminLoading] = useState(false);
   const [showTransactionLog, setShowTransactionLog] = useState(false);
   const [transactionLog, setTransactionLog] = useState<FinancialTransaction[]>([]);
+  const [undoTxId, setUndoTxId] = useState<number | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -1044,6 +1046,20 @@ function UserDashboard({
       setTransactionLog(data);
       setShowTransactionLog(true);
     } catch { alert("فشل تحميل سجل العمليات"); }
+  }
+
+  async function handleUndoTransaction(txId: number) {
+    setUndoLoading(true);
+    try {
+      await apiFetch(`/transactions/${txId}/undo`, { method: "DELETE" });
+      setTransactionLog((prev) => prev.filter((t) => t.id !== txId));
+      setUndoTxId(null);
+      await onRefreshUser?.();
+    } catch {
+      alert("فشل التراجع عن العملية");
+    } finally {
+      setUndoLoading(false);
+    }
   }
 
   async function handleAdminFinancial() {
@@ -1801,8 +1817,10 @@ function UserDashboard({
                   pay_transaction_fee: { label: "سداد مبلغ المعاملة", color: "#0f7a38", bg: "#dcfce7" },
                 };
                 const meta = typeLabel[tx.type] ?? { label: tx.type, color: "#5a6282", bg: "#f3f5fa" };
+                const isConfirming = undoTxId === tx.id;
                 return (
-                  <div key={tx.id} className="px-5 py-4 border-b border-[#eef0f6] text-right">
+                  <div key={tx.id} className="px-5 py-4 border-b border-[#eef0f6] text-right"
+                    style={{ background: isConfirming ? "#fff7f7" : "white", transition: "background 0.2s" }}>
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
                         style={{ background: meta.bg, border: `1.5px solid ${meta.color}22` }}>
@@ -1810,11 +1828,39 @@ function UserDashboard({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[12px] font-extrabold" style={{ color: meta.color }}>{tx.amount} ر.س</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-extrabold" style={{ color: meta.color }}>{tx.amount} ر.س</span>
+                            {onBack && !isConfirming && (
+                              <button
+                                onClick={() => setUndoTxId(tx.id)}
+                                title="التراجع عن هذه العملية"
+                                className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors hover:bg-red-50"
+                                style={{ border: "1px solid #fca5a5" }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+                              </button>
+                            )}
+                          </div>
                           <span className="text-[11px] font-bold text-[#1a1f3c]">{meta.label}</span>
                         </div>
                         <p className="text-[11px] text-[#5a6282] font-medium mb-1">{tx.description}</p>
                         <p className="text-[10px] text-[#8892a4]">{d.toLocaleString("ar-SA")}</p>
+                        {isConfirming && (
+                          <div className="mt-2 flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setUndoTxId(null)}
+                              disabled={undoLoading}
+                              className="px-3 py-1 rounded-lg text-[11px] font-bold text-[#5a6282] border border-[#e2e8f0] hover:bg-[#f3f5fa] transition-colors disabled:opacity-50">
+                              إلغاء
+                            </button>
+                            <button
+                              onClick={() => void handleUndoTransaction(tx.id)}
+                              disabled={undoLoading}
+                              className="px-3 py-1 rounded-lg text-[11px] font-bold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                              style={{ background: "linear-gradient(135deg,#dc2626,#ef4444)" }}>
+                              {undoLoading ? "جارٍ..." : "↩ تأكيد التراجع"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

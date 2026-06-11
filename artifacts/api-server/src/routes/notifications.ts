@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, notificationsTable, beneficiariesTable, financialTransactionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -275,6 +275,101 @@ router.post("/beneficiaries/:id/pay-transaction-fee", async (req, res): Promise<
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "فشل تأكيد سداد مبلغ المعاملة" });
+  }
+});
+
+router.delete("/transactions/:id/undo", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+
+    const [tx] = await db
+      .select()
+      .from(financialTransactionsTable)
+      .where(eq(financialTransactionsTable.id, id))
+      .limit(1);
+
+    if (!tx) { res.status(404).json({ error: "العملية غير موجودة" }); return; }
+
+    const [current] = await db
+      .select()
+      .from(beneficiariesTable)
+      .where(eq(beneficiariesTable.id, tx.beneficiaryId))
+      .limit(1);
+
+    if (!current) { res.status(404).json({ error: "المستفيد غير موجود" }); return; }
+
+    type BeneficiaryUpdate = {
+      profits?: string;
+      fees?: string;
+      withdrawalFeeStatus?: string;
+      withdrawalFeePaidAt?: Date | null;
+      liberationFee?: string;
+      liberationFeeStatus?: string;
+      liberationFeePaidAt?: Date | null;
+      transactionFee?: string;
+      transactionFeeStatus?: string;
+      transactionFeePaidAt?: Date | null;
+    };
+
+    let updateData: BeneficiaryUpdate = {};
+
+    switch (tx.type) {
+      case "add_profits": {
+        const amt = parseFloat(tx.amount) || 0;
+        const cur = parseInt(current.profits.replace(/,/g, ""), 10) || 0;
+        const next = Math.max(0, cur - amt);
+        updateData = { profits: next.toLocaleString("en-US") };
+        break;
+      }
+      case "add_fees": {
+        const amt = parseFloat(tx.amount) || 0;
+        const cur = parseInt(current.fees.replace(/,/g, ""), 10) || 0;
+        const next = Math.max(0, cur - amt);
+        updateData = { fees: next === 0 ? "0" : next.toLocaleString("en-US") };
+        break;
+      }
+      case "pay_withdrawal_fees": {
+        updateData = {
+          withdrawalFeeStatus: "unpaid",
+          withdrawalFeePaidAt: null,
+          fees: tx.amount,
+        };
+        break;
+      }
+      case "add_liberation_fee": {
+        updateData = { liberationFee: "0", liberationFeeStatus: "unpaid" };
+        break;
+      }
+      case "pay_liberation_fee": {
+        updateData = { liberationFeeStatus: "unpaid", liberationFeePaidAt: null };
+        break;
+      }
+      case "add_transaction_fee": {
+        updateData = { transactionFee: "0", transactionFeeStatus: "unpaid" };
+        break;
+      }
+      case "pay_transaction_fee": {
+        updateData = { transactionFeeStatus: "unpaid", transactionFeePaidAt: null };
+        break;
+      }
+    }
+
+    let updatedBeneficiary = current;
+    if (Object.keys(updateData).length > 0) {
+      const [updated] = await db
+        .update(beneficiariesTable)
+        .set(updateData)
+        .where(eq(beneficiariesTable.id, tx.beneficiaryId))
+        .returning();
+      updatedBeneficiary = updated;
+    }
+
+    await db.delete(financialTransactionsTable).where(eq(financialTransactionsTable.id, id));
+
+    res.json({ beneficiary: updatedBeneficiary });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "فشل التراجع عن العملية" });
   }
 });
 
