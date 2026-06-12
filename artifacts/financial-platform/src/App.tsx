@@ -728,10 +728,8 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
   const [submitTime, setSubmitTime] = useState("");
 
-  const feesNum = parseFloat(fees.replace(/,/g, "")) || 0;
   const profitsNum = parseFloat(maxAmount.replace(/,/g, "")) || 0;
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
-  const netAmount = amountNum - feesNum;
 
   const phase2Active = hours24Passed(user.liberationFeePaidAt);
   const phase3Active = hours24Passed(user.withdrawalFeePaidAt);
@@ -747,6 +745,9 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
     : phase2Active
     ? fees
     : user.liberationFee;
+
+  const feesNum = parseFloat((currentFeeAmount ?? "0").replace(/,/g, "")) || 0;
+  const netAmount = amountNum - feesNum;
 
   function getFailureMessage() {
     // المرحلة الثالثة: مبلغ المعاملة
