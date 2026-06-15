@@ -1047,7 +1047,7 @@ function UserDashboard({
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupNotif, setPopupNotif] = useState<Notification | null>(null);
-  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" | "add-liberation-fee" | "pay-liberation-fee" | "add-transaction-fee" | "pay-transaction-fee" | "toggle-phase2" | "toggle-phase3" | "add-custom-phase-amount" | "pay-custom-phase" | "toggle-custom-phase"; phaseId?: number } | null>(null);
+  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" | "add-liberation-fee" | "pay-liberation-fee" | "add-transaction-fee" | "pay-transaction-fee" | "add-custom-phase-amount" | "pay-custom-phase"; phaseId?: number } | null>(null);
   const [addProfitAmt, setAddProfitAmt] = useState("");
   const [addFeesAmt, setAddFeesAmt] = useState("");
   const [addLiberationAmt, setAddLiberationAmt] = useState("");
@@ -1165,10 +1165,6 @@ function UserDashboard({
         setAddTransactionAmt("");
       } else if (adminModal.type === "pay-transaction-fee") {
         await apiFetch(`/beneficiaries/${uid}/pay-transaction-fee`, { method: "POST" });
-      } else if (adminModal.type === "toggle-phase2") {
-        await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase2Visible: !user.phase2Visible }) });
-      } else if (adminModal.type === "toggle-phase3") {
-        await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase3Visible: !user.phase3Visible }) });
       } else if (adminModal.type === "add-custom-phase-amount") {
         const amt = parseInt(addCustomPhaseAmt.replace(/,/g, ""), 10);
         if (!amt || amt <= 0 || !adminModal.phaseId) { alert("أدخل مبلغاً صحيحاً"); return; }
@@ -1179,12 +1175,6 @@ function UserDashboard({
         if (!adminModal.phaseId) return;
         await apiFetch(`/beneficiaries/${uid}/custom-phases/${adminModal.phaseId}/pay`, { method: "POST" });
         await loadCustomPhases();
-      } else if (adminModal.type === "toggle-custom-phase") {
-        if (!adminModal.phaseId) return;
-        const ucp = userCustomPhases.find((p) => p.phaseId === adminModal.phaseId);
-        const newVisible = !(ucp?.visible ?? false);
-        await apiFetch(`/beneficiaries/${uid}/custom-phases/${adminModal.phaseId}/visibility`, { method: "PATCH", body: JSON.stringify({ visible: newVisible }) });
-        await loadCustomPhases();
       }
       await onRefreshUser?.();
       setAdminModal(null);
@@ -1193,6 +1183,38 @@ function UserDashboard({
     } finally {
       setAdminLoading(false);
     }
+  }
+
+  async function handleTogglePhase2() {
+    const uid = Number(user.id);
+    setAdminLoading(true);
+    try {
+      await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase2Visible: !user.phase2Visible }) });
+      await onRefreshUser?.();
+    } catch (e) { alert("فشلت العملية: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setAdminLoading(false); }
+  }
+
+  async function handleTogglePhase3() {
+    const uid = Number(user.id);
+    setAdminLoading(true);
+    try {
+      await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase3Visible: !user.phase3Visible }) });
+      await onRefreshUser?.();
+    } catch (e) { alert("فشلت العملية: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setAdminLoading(false); }
+  }
+
+  async function handleToggleCustomPhase(phaseId: number) {
+    const uid = Number(user.id);
+    const ucp = userCustomPhases.find((p) => p.phaseId === phaseId);
+    const newVisible = !(ucp?.visible ?? false);
+    setAdminLoading(true);
+    try {
+      await apiFetch(`/beneficiaries/${uid}/custom-phases/${phaseId}/visibility`, { method: "PATCH", body: JSON.stringify({ visible: newVisible }) });
+      await Promise.all([loadCustomPhases(), onRefreshUser?.()]);
+    } catch (e) { alert("فشلت العملية: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setAdminLoading(false); }
   }
 
   function fmtNotifDate(iso: string) {
@@ -1350,8 +1372,9 @@ function UserDashboard({
                   تأكيد سداد رسوم السحب
                 </button>
                 <button
-                  onClick={() => setAdminModal({ type: "toggle-phase2" })}
-                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  onClick={() => void handleTogglePhase2()}
+                  disabled={adminLoading}
+                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-50"
                   style={{ background: user.phase2Visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
                   {user.phase2Visible ? "🟢 ظاهر" : "⚫ مخفي"}
                 </button>
@@ -1446,8 +1469,9 @@ function UserDashboard({
                   تأكيد السداد
                 </button>
                 <button
-                  onClick={() => setAdminModal({ type: "toggle-phase3" })}
-                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  onClick={() => void handleTogglePhase3()}
+                  disabled={adminLoading}
+                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-50"
                   style={{ background: user.phase3Visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
                   {user.phase3Visible ? "🟢 ظاهر" : "⚫ مخفي"}
                 </button>
@@ -1469,8 +1493,9 @@ function UserDashboard({
                     <div key={phase.id} className="mb-4 pb-4 border-b border-[#f0f0f0] last:mb-0 last:pb-0 last:border-0">
                       <div className="flex items-center justify-between mb-2">
                         <button
-                          onClick={() => setAdminModal({ type: "toggle-custom-phase", phaseId: phase.id })}
-                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] transition-opacity"
+                          onClick={() => void handleToggleCustomPhase(phase.id)}
+                          disabled={adminLoading}
+                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] transition-opacity disabled:opacity-50"
                           style={{ background: ucp?.visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)" }}>
                           {ucp?.visible ? "🟢 ظاهر" : "⚫ مخفي"}
                         </button>
