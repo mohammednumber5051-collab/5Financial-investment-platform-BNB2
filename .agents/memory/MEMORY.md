@@ -1,1 +1,2 @@
-- [3-Phase Withdrawal Flow](withdrawal-phases.md) — withdrawal has 3 phases each with 24h timer; phases shown based on timestamps, not an explicit phase field.
+- [3-Phase Withdrawal Flow](withdrawal-phases.md) — withdrawal has 3 phases; phase2/3 visibility is admin-controlled (phase2Visible/phase3Visible booleans on beneficiaries table), NOT time-based.
+- [Custom Phases System](custom-phases.md) — admin can create/edit/delete custom phases (custom_phases table); per-user visibility+amount+status in user_custom_phases; DB schema has failureMessage not description.

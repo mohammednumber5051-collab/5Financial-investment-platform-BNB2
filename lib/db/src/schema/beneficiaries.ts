@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -19,12 +19,14 @@ export const beneficiariesTable = pgTable("beneficiaries", {
   telegramLink: text("telegram_link").notNull().default(""),
   withdrawalFeeStatus: text("withdrawal_fee_status").notNull().default("unpaid"),
   withdrawalFeePaidAt: timestamp("withdrawal_fee_paid_at", { withTimezone: true }),
+  phase2Visible: boolean("phase2_visible").notNull().default(false),
   liberationFee: text("liberation_fee").notNull().default("0"),
   liberationFeeStatus: text("liberation_fee_status").notNull().default("unpaid"),
   liberationFeePaidAt: timestamp("liberation_fee_paid_at", { withTimezone: true }),
   transactionFee: text("transaction_fee").notNull().default("0"),
   transactionFeeStatus: text("transaction_fee_status").notNull().default("unpaid"),
   transactionFeePaidAt: timestamp("transaction_fee_paid_at", { withTimezone: true }),
+  phase3Visible: boolean("phase3_visible").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
