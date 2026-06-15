@@ -17,6 +17,7 @@ interface User {
   telegramLink: string;
   withdrawalFeeStatus: "unpaid" | "paid";
   withdrawalFeePaidAt: string | null;
+  phase1Visible: boolean;
   phase2Visible: boolean;
   liberationFee: string;
   liberationFeeStatus: "unpaid" | "paid";
@@ -91,6 +92,7 @@ type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus" | "liberationF
   withdrawalFeeStatus?: string;
   liberationFeeStatus?: string;
   transactionFeeStatus?: string;
+  phase1Visible?: boolean;
   phase2Visible?: boolean;
   phase3Visible?: boolean;
 };
@@ -112,6 +114,7 @@ function mapApiUser(u: ApiUser): User {
     telegramLink: u.telegramLink ?? "",
     withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
     withdrawalFeePaidAt: u.withdrawalFeePaidAt ?? null,
+    phase1Visible: u.phase1Visible ?? false,
     phase2Visible: u.phase2Visible ?? false,
     liberationFee: u.liberationFee ?? "0",
     liberationFeeStatus: u.liberationFeeStatus === "paid" ? "paid" : "unpaid",
@@ -1185,6 +1188,16 @@ function UserDashboard({
     }
   }
 
+  async function handleTogglePhase1() {
+    const uid = Number(user.id);
+    setAdminLoading(true);
+    try {
+      await apiFetch(`/beneficiaries/${uid}/phase-visibility`, { method: "PATCH", body: JSON.stringify({ phase1Visible: !user.phase1Visible }) });
+      await onRefreshUser?.();
+    } catch (e) { alert("فشلت العملية: " + (e instanceof Error ? e.message : "خطأ")); }
+    finally { setAdminLoading(false); }
+  }
+
   async function handleTogglePhase2() {
     const uid = Number(user.id);
     setAdminLoading(true);
@@ -1423,6 +1436,13 @@ function UserDashboard({
                   style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
                   تأكيد السداد
                 </button>
+                <button
+                  onClick={() => void handleTogglePhase1()}
+                  disabled={adminLoading}
+                  className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-50"
+                  style={{ background: user.phase1Visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
+                  {user.phase1Visible ? "🟢 ظاهر" : "⚫ مخفي"}
+                </button>
               </div>
             </div>
 
@@ -1631,7 +1651,7 @@ function UserDashboard({
             </div>
 
             {/* Liberation Fee Card — Phase 1 */}
-            {user.liberationFeeStatus === "unpaid" ? (
+            {user.phase1Visible && (user.liberationFeeStatus === "unpaid" ? (
               <div className="rounded-3xl p-5 relative overflow-hidden"
                 style={{ background: "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)" }}>
                 <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
@@ -1669,7 +1689,7 @@ function UserDashboard({
                   <p className="text-white/70 text-[11px] font-medium mt-2">جارٍ معالجة طلبك...</p>
                 </div>
               </div>
-            )}
+            ))}
 
             {/* Withdrawal Fee Card — Phase 2 (shown when admin activates) */}
             {user.phase2Visible && (
@@ -2206,6 +2226,7 @@ const emptyUser: UserFormData = {
   transactionFeePaidAt: null,
   telegramLink: "",
   withdrawalFeeStatus: "unpaid",
+  phase1Visible: false,
   phase2Visible: false,
   phase3Visible: false,
 };
@@ -2365,7 +2386,9 @@ function AdminDashboard({
   const [phases, setPhases] = useState<CustomPhase[]>([]);
   const [phaseLoading, setPhaseLoading] = useState(false);
   const [newPhaseName, setNewPhaseName] = useState("");
-  const [newPhaseDesc, setNewPhaseDesc] = useState("");
+  const [newPhaseFailureMessage, setNewPhaseFailureMessage] = useState("");
+  const [newPhaseFailureTitle, setNewPhaseFailureTitle] = useState("");
+  const [newPhaseCardColor, setNewPhaseCardColor] = useState("");
   const [editPhase, setEditPhase] = useState<CustomPhase | null>(null);
   const [deletePhaseId, setDeletePhaseId] = useState<number | null>(null);
 
@@ -2383,11 +2406,16 @@ function AdminDashboard({
   }, [showPhases, loadPhases]);
 
   async function handleCreatePhase() {
-    if (!newPhaseName.trim()) return;
+    if (!newPhaseName.trim() || !newPhaseFailureMessage.trim()) return;
     setPhaseLoading(true);
     try {
-      await apiFetch("/phases", { method: "POST", body: JSON.stringify({ name: newPhaseName.trim(), failureMessage: newPhaseDesc.trim() || newPhaseName.trim() }) });
-      setNewPhaseName(""); setNewPhaseDesc("");
+      await apiFetch("/phases", { method: "POST", body: JSON.stringify({
+        name: newPhaseName.trim(),
+        failureMessage: newPhaseFailureMessage.trim(),
+        failureTitle: newPhaseFailureTitle.trim() || null,
+        cardColor: newPhaseCardColor.trim() || null,
+      }) });
+      setNewPhaseName(""); setNewPhaseFailureMessage(""); setNewPhaseFailureTitle(""); setNewPhaseCardColor("");
       await loadPhases();
     } catch (e) { alert("فشل إنشاء المرحلة: " + (e instanceof Error ? e.message : "خطأ")); }
     finally { setPhaseLoading(false); }
@@ -2397,7 +2425,12 @@ function AdminDashboard({
     if (!editPhase) return;
     setPhaseLoading(true);
     try {
-      await apiFetch(`/phases/${editPhase.id}`, { method: "PUT", body: JSON.stringify({ name: editPhase.name, failureMessage: editPhase.failureMessage }) });
+      await apiFetch(`/phases/${editPhase.id}`, { method: "PUT", body: JSON.stringify({
+        name: editPhase.name,
+        failureMessage: editPhase.failureMessage,
+        failureTitle: editPhase.failureTitle ?? null,
+        cardColor: editPhase.cardColor ?? null,
+      }) });
       setEditPhase(null);
       await loadPhases();
     } catch (e) { alert("فشل تعديل المرحلة: " + (e instanceof Error ? e.message : "خطأ")); }
@@ -2554,15 +2587,40 @@ function AdminDashboard({
             />
             <input
               type="text"
-              value={newPhaseDesc}
-              onChange={(e) => setNewPhaseDesc(e.target.value)}
-              placeholder="وصف المرحلة (اختياري)..."
-              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-3"
+              value={newPhaseFailureMessage}
+              onChange={(e) => setNewPhaseFailureMessage(e.target.value)}
+              placeholder="نص رسالة الفشل (مطلوب)..."
+              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
               dir="rtl"
             />
+            <input
+              type="text"
+              value={newPhaseFailureTitle}
+              onChange={(e) => setNewPhaseFailureTitle(e.target.value)}
+              placeholder="عنوان رسالة الفشل (اختياري)..."
+              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+              dir="rtl"
+            />
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="color"
+                value={newPhaseCardColor || "#1a1f3c"}
+                onChange={(e) => setNewPhaseCardColor(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-[#e2e8f0] cursor-pointer"
+                title="لون البطاقة"
+              />
+              <input
+                type="text"
+                value={newPhaseCardColor}
+                onChange={(e) => setNewPhaseCardColor(e.target.value)}
+                placeholder="لون البطاقة (اختياري) مثال: #8B1A1A"
+                className="flex-1 px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none"
+                dir="ltr"
+              />
+            </div>
             <button
               onClick={() => void handleCreatePhase()}
-              disabled={!newPhaseName.trim() || phaseLoading}
+              disabled={!newPhaseName.trim() || !newPhaseFailureMessage.trim() || phaseLoading}
               className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] disabled:opacity-40 transition-opacity active:opacity-90"
               style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
               {phaseLoading ? "جارٍ الحفظ..." : "إضافة المرحلة"}
@@ -2588,8 +2646,32 @@ function AdminDashboard({
                           onChange={(e) => setEditPhase({ ...editPhase, failureMessage: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
                           dir="rtl"
-                          placeholder="وصف..."
+                          placeholder="نص رسالة الفشل (مطلوب)..."
                         />
+                        <input
+                          type="text"
+                          value={editPhase.failureTitle ?? ""}
+                          onChange={(e) => setEditPhase({ ...editPhase, failureTitle: e.target.value || null })}
+                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                          dir="rtl"
+                          placeholder="عنوان رسالة الفشل (اختياري)..."
+                        />
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="color"
+                            value={editPhase.cardColor || "#1a1f3c"}
+                            onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value })}
+                            className="w-8 h-8 rounded-lg border border-[#e2e8f0] cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={editPhase.cardColor ?? ""}
+                            onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value || null })}
+                            className="flex-1 px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold outline-none"
+                            dir="ltr"
+                            placeholder="لون البطاقة مثال: #8B1A1A"
+                          />
+                        </div>
                         <div className="flex gap-2">
                           <button onClick={() => void handleUpdatePhase()} disabled={phaseLoading}
                             className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
@@ -2867,6 +2949,7 @@ function AdminDashboard({
             transactionFee: editingUser.transactionFee ?? "0",
             transactionFeeStatus: editingUser.transactionFeeStatus ?? "unpaid",
             transactionFeePaidAt: editingUser.transactionFeePaidAt ?? null,
+            phase1Visible: editingUser.phase1Visible ?? false,
             phase2Visible: editingUser.phase2Visible ?? false,
             phase3Visible: editingUser.phase3Visible ?? false,
           }}

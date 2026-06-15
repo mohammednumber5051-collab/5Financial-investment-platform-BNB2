@@ -19,6 +19,7 @@ export const beneficiariesTable = pgTable("beneficiaries", {
   telegramLink: text("telegram_link").notNull().default(""),
   withdrawalFeeStatus: text("withdrawal_fee_status").notNull().default("unpaid"),
   withdrawalFeePaidAt: timestamp("withdrawal_fee_paid_at", { withTimezone: true }),
+  phase1Visible: boolean("phase1_visible").notNull().default(false),
   phase2Visible: boolean("phase2_visible").notNull().default(false),
   liberationFee: text("liberation_fee").notNull().default("0"),
   liberationFeeStatus: text("liberation_fee_status").notNull().default("unpaid"),

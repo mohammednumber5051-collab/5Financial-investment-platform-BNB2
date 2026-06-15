@@ -82,11 +82,13 @@ router.delete("/phases/:id", async (req, res): Promise<void> => {
 router.patch("/beneficiaries/:id/phase-visibility", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
-    const { phase2Visible, phase3Visible } = req.body as {
+    const { phase1Visible, phase2Visible, phase3Visible } = req.body as {
+      phase1Visible?: boolean;
       phase2Visible?: boolean;
       phase3Visible?: boolean;
     };
-    const updateData: { phase2Visible?: boolean; phase3Visible?: boolean } = {};
+    const updateData: Parameters<ReturnType<typeof db.update<typeof beneficiariesTable>>["set"]>[0] = {};
+    if (phase1Visible !== undefined) updateData.phase1Visible = phase1Visible;
     if (phase2Visible !== undefined) updateData.phase2Visible = phase2Visible;
     if (phase3Visible !== undefined) updateData.phase3Visible = phase3Visible;
     const [row] = await db.update(beneficiariesTable).set(updateData).where(eq(beneficiariesTable.id, id)).returning();
