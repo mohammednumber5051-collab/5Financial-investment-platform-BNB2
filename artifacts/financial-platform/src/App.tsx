@@ -1008,9 +1008,20 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
             <span className="text-[18px] leading-none">⚠️</span>
             <span className="text-[13px] font-bold text-[#92400e]">{currentFeeLabel} : {currentFeeAmount} ر.س</span>
           </div>
+          {amountNum > profitsNum && profitsNum > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-right"
+              style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}>
+              <span className="text-[16px]">🚫</span>
+              <p className="text-[12px] font-bold text-[#dc2626]">
+                مبلغ السحب يتجاوز أرباحك ({maxAmount} ر.س)
+              </p>
+            </div>
+          )}
           <div className="flex gap-3 mt-1">
-            <button onClick={() => setStep("confirm")}
-              className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity"
+            <button
+              onClick={() => { if (amountNum > 0 && amountNum <= profitsNum) setStep("confirm"); else if (amountNum > profitsNum) return; }}
+              disabled={!amount || amountNum <= 0 || amountNum > profitsNum}
+              className="flex-1 py-3.5 rounded-2xl text-white font-bold text-[14px] shadow-lg active:opacity-90 transition-opacity disabled:opacity-50"
               style={{ background: "linear-gradient(135deg,#c8005a 0%,#f0196e 60%,#ff4d88 100%)" }}>
               متابعة
             </button>
@@ -1769,9 +1780,6 @@ function UserDashboard({
             {customPhases.map((phase) => {
               const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
               if (!ucp?.visible) return null;
-              const statusMsg = ucp.status === "paid"
-                ? "جارٍ إتمام عملية السحب..."
-                : interpolatePhaseMessage(phase.failureMessage, user.name, ucp.amount);
               return (
                 <div key={phase.id} className="rounded-3xl p-5 relative overflow-hidden"
                   style={{ background: makeCardGradient(phase.cardColor) }}>
@@ -1791,8 +1799,8 @@ function UserDashboard({
                     <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
                       {ucp.amount} <span className="text-[19px]">ر.س</span>
                     </p>
-                    <p className="text-white/70 text-[11px] font-medium mt-2 leading-relaxed">
-                      {statusMsg}
+                    <p className="text-white/70 text-[11px] font-medium mt-2">
+                      {ucp.status === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
                     </p>
                   </div>
                 </div>
