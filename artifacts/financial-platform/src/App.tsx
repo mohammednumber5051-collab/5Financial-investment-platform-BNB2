@@ -1712,7 +1712,7 @@ function UserDashboard({
                     <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
                     {done ? (
                       <>
-                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.liberationFee} ر.س ✔</p>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم سداد رسوم تحرير الأرباح ✔</p>
                         <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
                       </>
                     ) : (
@@ -1756,7 +1756,7 @@ function UserDashboard({
                     <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
                     {done ? (
                       <>
-                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.fees} ر.س ✔</p>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم سداد رسوم السحب ✔</p>
                         <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
                       </>
                     ) : (
@@ -1800,7 +1800,7 @@ function UserDashboard({
                     <p className="text-white/80 text-[11px] font-medium mb-1">مبلغ المعاملة</p>
                     {done ? (
                       <>
-                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.transactionFee} ر.س ✔</p>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع مبلغ المعاملة ✔</p>
                         <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
                       </>
                     ) : (
@@ -1846,7 +1846,7 @@ function UserDashboard({
                     <p className="text-white/80 text-[11px] font-medium mb-1">{phase.name}</p>
                     {done ? (
                       <>
-                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {ucp.amount} ر.س ✔</p>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع مبلغ {phase.name} ✔</p>
                         <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
                       </>
                     ) : (
