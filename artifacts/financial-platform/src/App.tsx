@@ -146,8 +146,8 @@ function makeCardGradient(hex: string | null): string {
 
 function interpolatePhaseMessage(msg: string, name: string, amount: string): string {
   return msg
-    .replace(/\[["''\u2018\u2019\u201c\u201d]?\s*اسم المستفيد\s*["''\u2018\u2019\u201c\u201d]?\]/g, name)
-    .replace(/\[["''\u2018\u2019\u201c\u201d]?\s*مبلغ[^\]]*\]/g, amount);
+    .replace(/\[[^\]]*اسم المستفيد[^\]]*\]/g, name)
+    .replace(/\[[^\]]*مبلغ[^\]]*\]/g, amount);
 }
 
 /* ─── Mock Data (fallback, no passwords) ─────────────────────── */
