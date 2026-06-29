@@ -132,6 +132,24 @@ function getClientSlugFromUrl(): string | null {
   return match ? match[1] : null;
 }
 
+function makeCardGradient(hex: string | null): string {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    return "linear-gradient(135deg,#1e3a5f 0%,#2952e3 40%,#4f8ef7 80%,#60a5fa 100%)";
+  }
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const dr = Math.round(r * 0.55), dg = Math.round(g * 0.55), db = Math.round(b * 0.55);
+  const lr = Math.round(r + (255 - r) * 0.28), lg = Math.round(g + (255 - g) * 0.28), lb = Math.round(b + (255 - b) * 0.28);
+  return `linear-gradient(135deg,rgb(${dr},${dg},${db}) 0%,rgb(${r},${g},${b}) 50%,rgb(${lr},${lg},${lb}) 100%)`;
+}
+
+function interpolatePhaseMessage(msg: string, name: string, amount: string): string {
+  return msg
+    .replace(/\[["''\u2018\u2019\u201c\u201d]?\s*اسم المستفيد\s*["''\u2018\u2019\u201c\u201d]?\]/g, name)
+    .replace(/\[["''\u2018\u2019\u201c\u201d]?\s*مبلغ[^\]]*\]/g, amount);
+}
+
 /* ─── Mock Data (fallback, no passwords) ─────────────────────── */
 const initialUsers: User[] = [];
 
@@ -803,7 +821,9 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
       if (visibleCustomPhase.ucp.status === "paid") {
         return `عزيز العميل / ${userName} ✅ تم تأكيد سداد ${phaseName} بنجاح\nيرجى الإنتظار سوف يقوم النظام بمعالجة طلبك خلال أقل من 24 ساعة`;
       }
-      return failureMsg ?? `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ ${phaseName} "${visibleCustomPhase.ucp.amount}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+      return failureMsg
+        ? interpolatePhaseMessage(failureMsg, userName, visibleCustomPhase.ucp.amount)
+        : `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ ${phaseName} "${visibleCustomPhase.ucp.amount}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
     }
     // المرحلة الثالثة: مبلغ المعاملة
     if (phase3Active) {
@@ -1499,61 +1519,61 @@ function UserDashboard({
             </div>
 
             {/* Custom Phases — Per-User Admin Controls */}
-            {customPhases.length > 0 && (
-              <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#f0f4ff" }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2952e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  </div>
-                  <p className="font-bold text-[13px] text-[#1a1f3c]">المراحل المخصصة</p>
-                </div>
-                {customPhases.map((phase) => {
-                  const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
-                  return (
-                    <div key={phase.id} className="mb-4 pb-4 border-b border-[#f0f0f0] last:mb-0 last:pb-0 last:border-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <button
-                          onClick={() => void handleToggleCustomPhase(phase.id)}
-                          disabled={adminLoading}
-                          className="px-2.5 py-1 rounded-lg text-white font-bold text-[11px] transition-opacity disabled:opacity-50"
-                          style={{ background: ucp?.visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)" }}>
-                          {ucp?.visible ? "🟢 ظاهر" : "⚫ مخفي"}
-                        </button>
-                        <p className="font-bold text-[12px] text-[#1a1f3c]">{phase.name}</p>
-                      </div>
-                      <div className="flex items-center justify-between mb-2 px-3 py-2 rounded-xl" style={{ background: "#f8f9fc", border: "1px solid #e2e8f0" }}>
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${ucp?.status === "paid" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                          {ucp?.status === "paid" ? "✓ تم السداد" : "● غير مسددة"}
-                        </span>
-                        <span className="font-extrabold text-[14px] text-[#1a1f3c]">{ucp?.amount ?? 0} ر.س</span>
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <input
-                          type="number"
-                          placeholder="المبلغ..."
-                          onChange={(e) => setAddCustomPhaseAmt(e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[12px] font-semibold text-right outline-none"
-                          dir="rtl"
-                        />
-                        <button
-                          onClick={() => { if (addCustomPhaseAmt && Number(addCustomPhaseAmt) > 0) setAdminModal({ type: "add-custom-phase-amount", phaseId: phase.id }); }}
-                          className="px-3 py-2 rounded-xl text-white font-bold text-[12px]"
-                          style={{ background: "linear-gradient(135deg,#2952e3,#4f8ef7)" }}>
-                          تعيين
-                        </button>
-                        <button
-                          onClick={() => setAdminModal({ type: "pay-custom-phase", phaseId: phase.id })}
-                          disabled={!ucp?.amount || ucp.status === "paid"}
-                          className="px-3 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
-                          style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
-                          سداد
-                        </button>
-                      </div>
+            {customPhases.map((phase) => {
+              const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
+              const accentColor = phase.cardColor || "#2952e3";
+              const accentBg = phase.cardColor ? `${phase.cardColor}18` : "#f0f4ff";
+              return (
+                <div key={phase.id} className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: accentBg }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <p className="font-bold text-[13px] text-[#1a1f3c]">{phase.name} — مرحلة مخصصة</p>
+                  </div>
+                  <div className="mb-2 text-[10px] text-[#8892a4] font-semibold">
+                    المبلغ الحالي: <span className="font-extrabold" style={{ color: accentColor }}>{ucp?.amount ?? "0"} ر.س</span>
+                  </div>
+                  <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl"
+                    style={{ background: accentBg, border: `1px solid ${accentColor}33` }}>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg ${ucp?.status === "paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                      {ucp?.status === "paid" ? "✓ تم السداد" : "● غير مسددة"}
+                    </span>
+                    <span className="font-extrabold text-[15px]" style={{ color: accentColor }}>{ucp?.amount ?? "0"} ر.س</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={addCustomPhaseAmt}
+                    onChange={(e) => setAddCustomPhaseAmt(e.target.value)}
+                    placeholder="مبلغ المرحلة المخصصة..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                    dir="rtl"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { if (addCustomPhaseAmt && Number(addCustomPhaseAmt) > 0) setAdminModal({ type: "add-custom-phase-amount", phaseId: phase.id }); }}
+                      className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90"
+                      style={{ background: `linear-gradient(135deg,${accentColor},${accentColor}cc)` }}>
+                      إضافة المبلغ
+                    </button>
+                    <button
+                      onClick={() => setAdminModal({ type: "pay-custom-phase", phaseId: phase.id })}
+                      disabled={!ucp?.amount || ucp?.amount === "0" || ucp?.status === "paid"}
+                      className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
+                      style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+                      تأكيد السداد
+                    </button>
+                    <button
+                      onClick={() => void handleToggleCustomPhase(phase.id)}
+                      disabled={adminLoading}
+                      className="px-3 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-50"
+                      style={{ background: ucp?.visible ? "linear-gradient(135deg,#16a34a,#22c55e)" : "linear-gradient(135deg,#6b7280,#9ca3af)", minWidth: 70 }}>
+                      {ucp?.visible ? "🟢 ظاهر" : "⚫ مخفي"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
 
             {/* Financial Transaction Log Button */}
             <button
@@ -1749,27 +1769,30 @@ function UserDashboard({
             {customPhases.map((phase) => {
               const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
               if (!ucp?.visible) return null;
+              const statusMsg = ucp.status === "paid"
+                ? "جارٍ إتمام عملية السحب..."
+                : interpolatePhaseMessage(phase.failureMessage, user.name, ucp.amount);
               return (
                 <div key={phase.id} className="rounded-3xl p-5 relative overflow-hidden"
-                  style={{ background: "linear-gradient(135deg,#1e3a5f 0%,#2952e3 40%,#4f8ef7 80%,#60a5fa 100%)" }}>
+                  style={{ background: makeCardGradient(phase.cardColor) }}>
                   <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
                   <div className="flex items-start justify-between mb-7 relative z-10">
-                    <span className="text-[11px] font-extrabold px-3 py-1.5 rounded-xl"
-                      style={{ background: ucp.status === "paid" ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.18)", border: ucp.status === "paid" ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(255,255,255,0.2)", color: "#fff" }}>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                      style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)" }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
                       {ucp.status === "paid" ? "✅ تم السداد" : "⚠️ مطلوب"}
                     </span>
-                    <div className="text-right">
-                      <p className="text-white font-extrabold text-[14px]">{phase.name}</p>
-                      <p className="text-white/60 text-[10px] font-medium mt-0.5">{phase.failureMessage}</p>
-                    </div>
                   </div>
                   <div className="text-right relative z-10">
-                    <p className="text-white/80 text-[11px] font-medium mb-1">المبلغ المطلوب</p>
+                    <p className="text-white/80 text-[11px] font-medium mb-1">{phase.name}</p>
                     <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
                       {ucp.amount} <span className="text-[19px]">ر.س</span>
                     </p>
-                    <p className="text-white/70 text-[11px] font-medium mt-2">
-                      {ucp.status === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
+                    <p className="text-white/70 text-[11px] font-medium mt-2 leading-relaxed">
+                      {statusMsg}
                     </p>
                   </div>
                 </div>
@@ -1930,7 +1953,15 @@ function UserDashboard({
           <div className="w-full max-w-xs bg-white rounded-3xl overflow-hidden shadow-2xl"
             style={{ animation: "popIn 0.25s cubic-bezier(.175,.885,.32,1.275)" }}>
             <div className="px-5 py-4 text-center border-b border-[#eef0f6]"
-              style={{ background: adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)" : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)" : adminModal.type === "add-liberation-fee" || adminModal.type === "pay-liberation-fee" ? "linear-gradient(135deg,#4a0a0a,#8B1A1A)" : adminModal.type === "add-transaction-fee" || adminModal.type === "pay-transaction-fee" ? "linear-gradient(135deg,#78350f,#d97706)" : "linear-gradient(135deg,#c8005a,#f0196e)" }}>
+              style={{ background:
+                adminModal.type === "add-profits" ? "linear-gradient(135deg,#0f7a38,#22c55e)"
+                : adminModal.type === "add-fees" ? "linear-gradient(135deg,#d97706,#f59e0b)"
+                : adminModal.type === "add-liberation-fee" || adminModal.type === "pay-liberation-fee" ? "linear-gradient(135deg,#4a0a0a,#8B1A1A)"
+                : adminModal.type === "add-transaction-fee" || adminModal.type === "pay-transaction-fee" ? "linear-gradient(135deg,#78350f,#d97706)"
+                : adminModal.type === "add-custom-phase-amount" || adminModal.type === "pay-custom-phase"
+                  ? makeCardGradient(customPhases.find((p) => p.id === adminModal.phaseId)?.cardColor ?? null)
+                : "linear-gradient(135deg,#c8005a,#f0196e)"
+              }}>
               <p className="text-white font-extrabold text-[15px]">
                 {adminModal.type === "add-profits" ? "تأكيد إضافة الأرباح"
                   : adminModal.type === "add-fees" ? "تأكيد إضافة الرسوم"
@@ -1938,6 +1969,8 @@ function UserDashboard({
                   : adminModal.type === "add-liberation-fee" ? "تأكيد إضافة رسوم التحرير"
                   : adminModal.type === "pay-liberation-fee" ? "تأكيد سداد رسوم التحرير"
                   : adminModal.type === "add-transaction-fee" ? "تأكيد إضافة مبلغ المعاملة"
+                  : adminModal.type === "add-custom-phase-amount" ? `تأكيد إضافة مبلغ ${customPhases.find((p) => p.id === adminModal.phaseId)?.name ?? "المرحلة"}`
+                  : adminModal.type === "pay-custom-phase" ? `تأكيد سداد ${customPhases.find((p) => p.id === adminModal.phaseId)?.name ?? "المرحلة"}`
                   : "تأكيد سداد مبلغ المعاملة"}
               </p>
             </div>
@@ -2003,6 +2036,31 @@ function UserDashboard({
                   </div>
                 </div>
               )}
+              {adminModal.type === "add-custom-phase-amount" && (() => {
+                const ph = customPhases.find((p) => p.id === adminModal.phaseId);
+                const color = ph?.cardColor || "#2952e3";
+                return (
+                  <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: `${color}12`, border: `1.5px solid ${color}44` }}>
+                    <p className="text-[12px] font-semibold text-[#374151] mb-1">مبلغ {ph?.name ?? "المرحلة المخصصة"}:</p>
+                    <p className="font-extrabold text-[20px]" style={{ color }}>{Number(addCustomPhaseAmt).toLocaleString("en-US")} ر.س</p>
+                  </div>
+                );
+              })()}
+              {adminModal.type === "pay-custom-phase" && (() => {
+                const ph = customPhases.find((p) => p.id === adminModal.phaseId);
+                const ucp = userCustomPhases.find((p) => p.phaseId === adminModal.phaseId);
+                const color = ph?.cardColor || "#2952e3";
+                return (
+                  <div className="rounded-2xl p-4 mb-4 text-right" style={{ background: `${color}12`, border: `1.5px solid ${color}44` }}>
+                    <p className="text-[12px] font-semibold text-[#374151] mb-1">{ph?.name ?? "المرحلة المخصصة"}:</p>
+                    <p className="font-extrabold text-[20px]" style={{ color }}>{ucp?.amount ?? 0} ر.س</p>
+                    <div className="mt-3 flex flex-col gap-1">
+                      <p className="text-[11px] text-[#16a34a] font-semibold">✓ تأكيد سداد المرحلة المخصصة</p>
+                      <p className="text-[11px] text-[#16a34a] font-semibold">✓ إرسال إشعار للمستفيد</p>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="flex gap-3">
                 <button onClick={() => setAdminModal(null)} disabled={adminLoading}
                   className="flex-1 py-2.5 rounded-xl border border-[#e2e8f0] text-[#5a6282] font-bold text-[13px] hover:bg-[#f3f5fa] transition-colors disabled:opacity-50">
