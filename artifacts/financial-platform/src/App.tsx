@@ -885,7 +885,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
             </div>
             <div className="flex items-center justify-between py-3 border-b border-[#f3f5fa]">
               <div className="flex items-baseline gap-1" dir="ltr">
-                <span className="text-[16px] font-extrabold text-[#16a34a]">{formatNum(netAmount)}</span>
+                <span className="text-[16px] font-extrabold text-[#16a34a]">{formatNum(amountNum)}</span>
                 <span className="text-[12px] font-bold text-[#16a34a]">ر.س</span>
               </div>
               <span className="text-[13px] font-semibold text-[#5a6282]">المبلغ الصافي :</span>
