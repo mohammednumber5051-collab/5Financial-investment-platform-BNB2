@@ -150,6 +150,11 @@ function interpolatePhaseMessage(msg: string, name: string, amount: string): str
     .replace(/\[[^\]]*مبلغ[^\]]*\]/g, amount);
 }
 
+function isPast24h(paidAt: string | null): boolean {
+  if (!paidAt) return false;
+  return Date.now() - new Date(paidAt).getTime() >= 24 * 60 * 60 * 1000;
+}
+
 /* ─── Mock Data (fallback, no passwords) ─────────────────────── */
 const initialUsers: User[] = [];
 
@@ -1682,126 +1687,178 @@ function UserDashboard({
             </div>
 
             {/* Liberation Fee Card — Phase 1 */}
-            {user.phase1Visible && (user.liberationFeeStatus === "unpaid" ? (
-              <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
-                <div className="flex items-start justify-between mb-7 relative z-10">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            {user.phase1Visible && (() => {
+              const paid = user.liberationFeeStatus === "paid";
+              const done = paid && isPast24h(user.liberationFeePaidAt);
+              const bg = done
+                ? "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)"
+                : paid
+                ? "linear-gradient(135deg,#1e4d8c 0%,#2563eb 60%,#3b82f6 100%)"
+                : "linear-gradient(135deg,#4a0a0a 0%,#7a1212 40%,#8B1A1A 70%,#a52020 100%)";
+              return (
+                <div className="rounded-3xl p-5 relative overflow-hidden" style={{ background: bg }}>
+                  <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-15" style={{ background: "rgba(255,255,255,0.3)" }} />
+                  <div className="flex items-start justify-between mb-7 relative z-10">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? <Icon.CheckCircle /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
+                    </div>
+                    <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                      style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? "✅ تمت المعالجة" : paid ? "✅ تم السداد" : "⚠️ مطلوب"}
+                    </span>
                   </div>
-                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-                    style={{ background: "rgba(210,30,80,0.6)", border: "1px solid rgba(255,255,255,0.2)" }}>رسوم</span>
-                </div>
-                <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
-                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                    {user.liberationFee} <span className="text-[19px]">ر.س</span>
-                  </p>
-                  <p className="text-white/70 text-[11px] font-medium mt-2">مطلوبة لتحرير الأرباح</p>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-                <div className="flex items-start justify-between mb-5 relative z-10">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <Icon.CheckCircle />
+                  <div className="text-right relative z-10">
+                    <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
+                    {done ? (
+                      <>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.liberationFee} ر.س ✔</p>
+                        <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                          {user.liberationFee} <span className="text-[19px]">ر.س</span>
+                        </p>
+                        <p className="text-white/70 text-[11px] font-medium mt-2">
+                          {paid ? "جاري معالجة طلبك" : "مطلوبة لتحرير الأرباح"}
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.2)" }}>✅ تم السداد</span>
                 </div>
-                <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم تحرير الأرباح</p>
-                  <p className="text-white font-extrabold text-[22px] leading-none">تم تسديد رسوم التحرير ✅</p>
-                  <p className="text-white/70 text-[11px] font-medium mt-2">جارٍ معالجة طلبك...</p>
-                </div>
-              </div>
-            ))}
+              );
+            })()}
 
             {/* Withdrawal Fee Card — Phase 2 (shown when admin activates) */}
-            {user.phase2Visible && (
-              <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-                <div className="flex items-start justify-between mb-7 relative z-10">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(180,30,30,0.5)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <Icon.AlertCircle />
+            {user.phase2Visible && (() => {
+              const paid = user.withdrawalFeeStatus === "paid";
+              const done = paid && isPast24h(user.withdrawalFeePaidAt);
+              const bg = done
+                ? "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)"
+                : paid
+                ? "linear-gradient(135deg,#1e4d8c 0%,#2563eb 60%,#3b82f6 100%)"
+                : "linear-gradient(135deg,#c41e1e 0%,#e83030 30%,#f05a1a 70%,#f97316 100%)";
+              return (
+                <div className="rounded-3xl p-5 relative overflow-hidden" style={{ background: bg }}>
+                  <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                  <div className="flex items-start justify-between mb-7 relative z-10">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                      style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? <Icon.CheckCircle /> : <Icon.AlertCircle />}
+                    </div>
+                    <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? "✅ تمت المعالجة" : paid ? "✅ تم السداد" : "🔴 مطلوب"}
+                    </span>
                   </div>
-                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    {user.withdrawalFeeStatus === "paid" ? "✅ تم السداد" : "🔴 مطلوب"}
-                  </span>
+                  <div className="text-right relative z-10">
+                    <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
+                    {done ? (
+                      <>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.fees} ر.س ✔</p>
+                        <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                          {user.fees} <span className="text-[19px]">ر.س</span>
+                        </p>
+                        <p className="text-white/70 text-[11px] font-medium mt-2">
+                          {paid ? "جاري معالجة طلبك" : "يرجى سداد رسوم السحب"}
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">رسوم السحب</p>
-                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                    {user.fees} <span className="text-[19px]">ر.س</span>
-                  </p>
-                  <p className="text-white/70 text-[11px] font-medium mt-2">
-                    {user.withdrawalFeeStatus === "paid" ? "جارٍ معالجة السحب..." : "يرجى سداد رسوم السحب"}
-                  </p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Transaction Fee Card — Phase 3 (shown when admin activates) */}
-            {user.phase3Visible && (
-              <div className="rounded-3xl p-5 relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 70%,#d97706 100%)" }}>
-                <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
-                <div className="flex items-start justify-between mb-7 relative z-10">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
-                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            {user.phase3Visible && (() => {
+              const paid = user.transactionFeeStatus === "paid";
+              const done = paid && isPast24h(user.transactionFeePaidAt);
+              const bg = done
+                ? "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)"
+                : paid
+                ? "linear-gradient(135deg,#1e4d8c 0%,#2563eb 60%,#3b82f6 100%)"
+                : "linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 70%,#d97706 100%)";
+              return (
+                <div className="rounded-3xl p-5 relative overflow-hidden" style={{ background: bg }}>
+                  <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
+                  <div className="flex items-start justify-between mb-7 relative z-10">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? <Icon.CheckCircle /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
+                    </div>
+                    <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
+                      {done ? "✅ تمت المعالجة" : paid ? "✅ تم السداد" : "⚠️ مطلوب"}
+                    </span>
                   </div>
-                  <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    {user.transactionFeeStatus === "paid" ? "✅ تم السداد" : "⚠️ مطلوب"}
-                  </span>
+                  <div className="text-right relative z-10">
+                    <p className="text-white/80 text-[11px] font-medium mb-1">مبلغ المعاملة</p>
+                    {done ? (
+                      <>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {user.transactionFee} ر.س ✔</p>
+                        <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                          {user.transactionFee} <span className="text-[19px]">ر.س</span>
+                        </p>
+                        <p className="text-white/70 text-[11px] font-medium mt-2">
+                          {paid ? "جاري معالجة طلبك" : "مطلوب لإتمام تحويل الأرباح"}
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right relative z-10">
-                  <p className="text-white/80 text-[11px] font-medium mb-1">مبلغ المعاملة</p>
-                  <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                    {user.transactionFee} <span className="text-[19px]">ر.س</span>
-                  </p>
-                  <p className="text-white/70 text-[11px] font-medium mt-2">
-                    {user.transactionFeeStatus === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
-                  </p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Custom Phase Cards */}
             {customPhases.map((phase) => {
               const ucp = userCustomPhases.find((p) => p.phaseId === phase.id);
               if (!ucp?.visible) return null;
+              const paid = ucp.status === "paid";
+              const done = paid && isPast24h(ucp.paidAt);
+              const bg = done
+                ? "linear-gradient(135deg,#166534 0%,#16a34a 60%,#22c55e 100%)"
+                : paid
+                ? "linear-gradient(135deg,#1e4d8c 0%,#2563eb 60%,#3b82f6 100%)"
+                : makeCardGradient(phase.cardColor);
               return (
-                <div key={phase.id} className="rounded-3xl p-5 relative overflow-hidden"
-                  style={{ background: makeCardGradient(phase.cardColor) }}>
+                <div key={phase.id} className="rounded-3xl p-5 relative overflow-hidden" style={{ background: bg }}>
                   <div className="absolute -bottom-8 -left-6 w-36 h-36 rounded-full opacity-10" style={{ background: "rgba(255,255,255,0.4)" }} />
                   <div className="flex items-start justify-between mb-7 relative z-10">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
                       style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)" }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      {done ? <Icon.CheckCircle /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>}
                     </div>
                     <span className="text-white text-[10px] font-bold px-3 py-1 rounded-lg"
                       style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                      {ucp.status === "paid" ? "✅ تم السداد" : "⚠️ مطلوب"}
+                      {done ? "✅ تمت المعالجة" : paid ? "✅ تم السداد" : "⚠️ مطلوب"}
                     </span>
                   </div>
                   <div className="text-right relative z-10">
                     <p className="text-white/80 text-[11px] font-medium mb-1">{phase.name}</p>
-                    <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
-                      {ucp.amount} <span className="text-[19px]">ر.س</span>
-                    </p>
-                    <p className="text-white/70 text-[11px] font-medium mt-2">
-                      {ucp.status === "paid" ? "جارٍ إتمام عملية السحب..." : "مطلوب لإتمام تحويل الأرباح"}
-                    </p>
+                    {done ? (
+                      <>
+                        <p className="text-white font-extrabold text-[20px] leading-snug">تم دفع {ucp.amount} ر.س ✔</p>
+                        <p className="text-white/80 text-[11px] font-medium mt-2">تم ✔ معالجة طلبك بنجاح</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white font-extrabold leading-none" style={{ fontSize: "1.95rem" }}>
+                          {ucp.amount} <span className="text-[19px]">ر.س</span>
+                        </p>
+                        <p className="text-white/70 text-[11px] font-medium mt-2">
+                          {paid ? "جاري معالجة طلبك" : "مطلوب لإتمام تحويل الأرباح"}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               );
