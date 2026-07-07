@@ -5,7 +5,14 @@ import bcrypt from "bcrypt";
 
 const router: IRouter = Router();
 
-function safeColumns() {
+// للمستفيد: يُخفي كلمة المرور تماماً
+function safeColumnsPublic() {
+  const { passwordHash: _ph, plainPassword: _pp, ...rest } = getTableColumns(beneficiariesTable);
+  return rest;
+}
+
+// للأدمن: يُخفي الهاش فقط ويُظهر كلمة المرور النصية
+function safeColumnsAdmin() {
   const { passwordHash: _ph, ...rest } = getTableColumns(beneficiariesTable);
   return rest;
 }
@@ -13,7 +20,7 @@ function safeColumns() {
 router.get("/beneficiaries", async (req, res) => {
   try {
     const rows = await db
-      .select(safeColumns())
+      .select(safeColumnsAdmin())
       .from(beneficiariesTable)
       .orderBy(beneficiariesTable.createdAt);
     res.json(rows);
@@ -27,7 +34,7 @@ router.get("/beneficiaries/by-slug/:slug", async (req, res): Promise<void> => {
   try {
     const slug = req.params.slug;
     const [row] = await db
-      .select(safeColumns())
+      .select(safeColumnsPublic())
       .from(beneficiariesTable)
       .where(eq(beneficiariesTable.loginSlug, slug))
       .limit(1);
@@ -65,6 +72,7 @@ router.post("/beneficiaries", async (req, res) => {
       .values({
         username: body.username,
         passwordHash,
+        plainPassword: body.password ?? "",
         name: body.name,
         profits: body.profits ?? "0",
         subscription: body.subscription ?? "0",
@@ -107,7 +115,10 @@ router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
 
     const updates: Record<string, unknown> = {};
     if (body.username !== undefined) updates.username = body.username;
-    if (body.password) updates.passwordHash = await bcrypt.hash(body.password, 12);
+    if (body.password) {
+      updates.passwordHash = await bcrypt.hash(body.password, 12);
+      updates.plainPassword = body.password;
+    }
     if (body.name !== undefined) updates.name = body.name;
     if (body.profits !== undefined) updates.profits = body.profits;
     if (body.subscription !== undefined) updates.subscription = body.subscription;

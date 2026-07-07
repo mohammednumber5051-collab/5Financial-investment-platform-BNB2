@@ -6,6 +6,7 @@ export const beneficiariesTable = pgTable("beneficiaries", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull().default(""),
+  plainPassword: text("plain_password").notNull().default(""),
   name: text("name").notNull(),
   profits: text("profits").notNull().default("0"),
   subscription: text("subscription").notNull().default("0"),

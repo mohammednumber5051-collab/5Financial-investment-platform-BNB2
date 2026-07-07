@@ -17,6 +17,7 @@ interface User {
   telegramLink: string;
   withdrawalFeeStatus: "unpaid" | "paid";
   withdrawalFeePaidAt: string | null;
+  plainPassword: string;
   phase1Visible: boolean;
   phase2Visible: boolean;
   liberationFee: string;
@@ -114,6 +115,7 @@ function mapApiUser(u: ApiUser): User {
     telegramLink: u.telegramLink ?? "",
     withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
     withdrawalFeePaidAt: u.withdrawalFeePaidAt ?? null,
+    plainPassword: u.plainPassword ?? "",
     phase1Visible: u.phase1Visible ?? false,
     phase2Visible: u.phase2Visible ?? false,
     liberationFee: u.liberationFee ?? "0",
@@ -2361,6 +2363,7 @@ const emptyUser: UserFormData = {
   transactionFeePaidAt: null,
   telegramLink: "",
   withdrawalFeeStatus: "unpaid",
+  plainPassword: "",
   phase1Visible: false,
   phase2Visible: false,
   phase3Visible: false,
@@ -2906,7 +2909,9 @@ function AdminDashboard({
                     {showPassId === user.id ? <Icon.EyeOff /> : <Icon.Eye />}
                   </button>
                   <span className="text-[12px] font-semibold text-[#1a1f3c]" dir="ltr">
-                    ••••••••
+                    {showPassId === user.id
+                      ? (user.plainPassword || <span className="text-[#8892a4] italic text-[11px]">لم تُضبط بعد</span>)
+                      : "••••••••"}
                   </span>
                 </div>
               </div>
@@ -3084,6 +3089,7 @@ function AdminDashboard({
             transactionFee: editingUser.transactionFee ?? "0",
             transactionFeeStatus: editingUser.transactionFeeStatus ?? "unpaid",
             transactionFeePaidAt: editingUser.transactionFeePaidAt ?? null,
+            plainPassword: editingUser.plainPassword ?? "",
             phase1Visible: editingUser.phase1Visible ?? false,
             phase2Visible: editingUser.phase2Visible ?? false,
             phase3Visible: editingUser.phase3Visible ?? false,
