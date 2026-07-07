@@ -704,6 +704,7 @@ function ChangeCredentialsModal({ onClose, userId, currentUsername, onSaved }: {
             <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">كلمة المرور الجديدة</label>
             <input
               type="password"
+              dir="ltr"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="اتركها فارغة إذا لا تريد التغيير"
@@ -718,6 +719,7 @@ function ChangeCredentialsModal({ onClose, userId, currentUsername, onSaved }: {
               <label className="block text-[13px] font-bold text-[#1a1f3c] mb-2 text-right">تأكيد كلمة المرور</label>
               <input
                 type="password"
+                dir="ltr"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="أعد إدخال كلمة المرور"
@@ -2423,6 +2425,7 @@ function UserFormModal({
             <div className="relative">
               <input
                 type={showPass ? "text" : "password"}
+                dir="ltr"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
                 placeholder="أدخل كلمة المرور"
