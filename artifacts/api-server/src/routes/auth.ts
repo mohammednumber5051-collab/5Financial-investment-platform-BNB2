@@ -67,7 +67,7 @@ router.post("/auth/beneficiary/login", async (req, res): Promise<void> => {
       return;
     }
 
-    const match = await bcrypt.compare(password, row.passwordHash);
+    const match = await bcrypt.compare(password.replace(/\s/g, ""), row.passwordHash);
     if (!match) {
       res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
       return;

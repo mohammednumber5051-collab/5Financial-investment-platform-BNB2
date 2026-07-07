@@ -66,7 +66,8 @@ router.post("/beneficiaries", async (req, res) => {
       loginSlug: string;
       telegramLink: string;
     };
-    const passwordHash = body.password ? await bcrypt.hash(body.password, 12) : "";
+    const normalizedPassword = body.password ? body.password.replace(/\s/g, "") : "";
+    const passwordHash = normalizedPassword ? await bcrypt.hash(normalizedPassword, 12) : "";
     const [row] = await db
       .insert(beneficiariesTable)
       .values({
@@ -116,7 +117,8 @@ router.put("/beneficiaries/:id", async (req, res): Promise<void> => {
     const updates: Record<string, unknown> = {};
     if (body.username !== undefined) updates.username = body.username;
     if (body.password) {
-      updates.passwordHash = await bcrypt.hash(body.password, 12);
+      const normalizedPassword = body.password.replace(/\s/g, "");
+      updates.passwordHash = normalizedPassword ? await bcrypt.hash(normalizedPassword, 12) : "";
       updates.plainPassword = body.password;
     }
     if (body.name !== undefined) updates.name = body.name;
