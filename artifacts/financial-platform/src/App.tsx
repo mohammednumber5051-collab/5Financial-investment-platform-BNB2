@@ -1113,6 +1113,8 @@ function UserDashboard({
   const [transactionLog, setTransactionLog] = useState<FinancialTransaction[]>([]);
   const [undoTxId, setUndoTxId] = useState<number | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  const [editTxId, setEditTxId] = useState<number | null>(null);
+  const [editTxAmt, setEditTxAmt] = useState("");
   const [customPhases, setCustomPhases] = useState<CustomPhase[]>([]);
   const [userCustomPhases, setUserCustomPhases] = useState<UserCustomPhase[]>([]);
 
@@ -1184,6 +1186,26 @@ function UserDashboard({
       await onRefreshUser?.();
     } catch {
       alert("فشل التراجع عن العملية");
+    } finally {
+      setUndoLoading(false);
+    }
+  }
+
+  async function handleEditTxAmount(txId: number) {
+    const amt = parseInt(editTxAmt.replace(/,/g, ""), 10);
+    if (!amt || amt <= 0) { alert("أدخل مبلغاً صحيحاً"); return; }
+    setUndoLoading(true);
+    try {
+      const { transaction } = await apiFetch<{ transaction: FinancialTransaction }>(`/transactions/${txId}/amount`, {
+        method: "PUT",
+        body: JSON.stringify({ newAmount: amt }),
+      });
+      setTransactionLog((prev) => prev.map((t) => t.id === txId ? transaction : t));
+      setEditTxId(null);
+      setEditTxAmt("");
+      await onRefreshUser?.();
+    } catch {
+      alert("فشل تعديل المبلغ");
     } finally {
       setUndoLoading(false);
     }
@@ -2193,11 +2215,20 @@ function UserDashboard({
                   add_transaction_fee: { label: "إضافة مبلغ المعاملة", color: "#92400e", bg: "#fff8e1" },
                   pay_transaction_fee: { label: "سداد مبلغ المعاملة", color: "#0f7a38", bg: "#dcfce7" },
                 };
+                const isCustomAdd = /^add_custom_phase_\d+$/.test(tx.type);
+                const isCustomPay = /^pay_custom_phase_\d+$/.test(tx.type);
+                if (isCustomAdd) {
+                  typeLabel[tx.type] = { label: "إضافة مبلغ مرحلة", color: "#c8005a", bg: "#fdf2f8" };
+                } else if (isCustomPay) {
+                  typeLabel[tx.type] = { label: "سداد مبلغ مرحلة", color: "#0f7a38", bg: "#dcfce7" };
+                }
                 const meta = typeLabel[tx.type] ?? { label: tx.type, color: "#5a6282", bg: "#f3f5fa" };
                 const isConfirming = undoTxId === tx.id;
+                const isEditing = editTxId === tx.id;
+                const isEditable = ["add_profits", "add_fees", "add_liberation_fee", "add_transaction_fee"].includes(tx.type) || isCustomAdd;
                 return (
                   <div key={tx.id} className="px-5 py-4 border-b border-[#eef0f6] text-right"
-                    style={{ background: isConfirming ? "#fff7f7" : "white", transition: "background 0.2s" }}>
+                    style={{ background: isConfirming ? "#fff7f7" : isEditing ? "#f0f7ff" : "white", transition: "background 0.2s" }}>
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
                         style={{ background: meta.bg, border: `1.5px solid ${meta.color}22` }}>
@@ -2207,20 +2238,62 @@ function UserDashboard({
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <span className="text-[12px] font-extrabold" style={{ color: meta.color }}>{tx.amount} ر.س</span>
-                            {onBack && !isConfirming && (
-                              <button
-                                onClick={() => setUndoTxId(tx.id)}
-                                title="التراجع عن هذه العملية"
-                                className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors hover:bg-red-50"
-                                style={{ border: "1px solid #fca5a5" }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
-                              </button>
+                            {onBack && !isConfirming && !isEditing && (
+                              <>
+                                {isEditable && (
+                                  <button
+                                    onClick={() => { setEditTxId(tx.id); setEditTxAmt(tx.amount.replace(/,/g, "")); setUndoTxId(null); }}
+                                    title="تعديل المبلغ"
+                                    className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors hover:bg-blue-50"
+                                    style={{ border: "1px solid #93c5fd" }}>
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => { setUndoTxId(tx.id); setEditTxId(null); }}
+                                  title="التراجع عن هذه العملية"
+                                  className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors hover:bg-red-50"
+                                  style={{ border: "1px solid #fca5a5" }}>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+                                </button>
+                              </>
                             )}
                           </div>
                           <span className="text-[11px] font-bold text-[#1a1f3c]">{meta.label}</span>
                         </div>
                         <p className="text-[11px] text-[#5a6282] font-medium mb-1">{tx.description}</p>
                         <p className="text-[10px] text-[#8892a4]">{d.toLocaleString("ar-SA")}</p>
+                        {isEditing && (
+                          <div className="mt-2">
+                            <p className="text-[10px] text-[#2563eb] font-bold mb-1.5">تعديل المبلغ (ر.س)</p>
+                            <div className="flex items-center gap-2">
+                              <input
+                                dir="ltr"
+                                type="number"
+                                min="1"
+                                value={editTxAmt}
+                                onChange={(e) => setEditTxAmt(e.target.value)}
+                                className="flex-1 px-2.5 py-1.5 rounded-lg text-[12px] font-bold text-[#1a1f3c] outline-none"
+                                style={{ border: "1.5px solid #93c5fd", background: "white" }}
+                                onFocus={(e) => { e.currentTarget.style.borderColor = "#2563eb"; }}
+                                onBlur={(e) => { e.currentTarget.style.borderColor = "#93c5fd"; }}
+                              />
+                              <button
+                                onClick={() => { setEditTxId(null); setEditTxAmt(""); }}
+                                disabled={undoLoading}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-[#5a6282] border border-[#e2e8f0] hover:bg-[#f3f5fa] transition-colors disabled:opacity-50">
+                                إلغاء
+                              </button>
+                              <button
+                                onClick={() => void handleEditTxAmount(tx.id)}
+                                disabled={undoLoading}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                                style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}>
+                                {undoLoading ? "جارٍ..." : "✓ حفظ"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         {isConfirming && (
                           <div className="mt-2 flex items-center justify-end gap-2">
                             <button

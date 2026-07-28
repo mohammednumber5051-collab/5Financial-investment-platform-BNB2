@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, notificationsTable, beneficiariesTable, financialTransactionsTable } from "@workspace/db";
+import { db, notificationsTable, beneficiariesTable, financialTransactionsTable, userCustomPhasesTable } from "@workspace/db";
 import { eq, sql, and, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -352,6 +352,35 @@ router.delete("/transactions/:id/undo", async (req, res): Promise<void> => {
         updateData = { transactionFeeStatus: "unpaid", transactionFeePaidAt: null };
         break;
       }
+      default: {
+        // custom phase: add_custom_phase_N or pay_custom_phase_N
+        const addMatch = tx.type.match(/^add_custom_phase_(\d+)$/);
+        const payMatch = tx.type.match(/^pay_custom_phase_(\d+)$/);
+        if (addMatch) {
+          const phaseId = Number(addMatch[1]);
+          await db
+            .update(userCustomPhasesTable)
+            .set({ amount: "0", status: "unpaid" })
+            .where(
+              and(
+                eq(userCustomPhasesTable.userId, tx.beneficiaryId),
+                eq(userCustomPhasesTable.phaseId, phaseId),
+              ),
+            );
+        } else if (payMatch) {
+          const phaseId = Number(payMatch[1]);
+          await db
+            .update(userCustomPhasesTable)
+            .set({ status: "unpaid", paidAt: null })
+            .where(
+              and(
+                eq(userCustomPhasesTable.userId, tx.beneficiaryId),
+                eq(userCustomPhasesTable.phaseId, phaseId),
+              ),
+            );
+        }
+        break;
+      }
     }
 
     let updatedBeneficiary = current;
@@ -397,6 +426,96 @@ router.delete("/transactions/:id/undo", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "فشل التراجع عن العملية" });
+  }
+});
+
+/* ── Edit transaction amount ─────────────────────────────────── */
+router.put("/transactions/:id/amount", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    const { newAmount } = req.body as { newAmount: number };
+
+    if (!newAmount || newAmount <= 0) {
+      res.status(400).json({ error: "المبلغ غير صحيح" });
+      return;
+    }
+
+    const [tx] = await db
+      .select()
+      .from(financialTransactionsTable)
+      .where(eq(financialTransactionsTable.id, id))
+      .limit(1);
+
+    if (!tx) { res.status(404).json({ error: "العملية غير موجودة" }); return; }
+
+    const [current] = await db
+      .select()
+      .from(beneficiariesTable)
+      .where(eq(beneficiariesTable.id, tx.beneficiaryId))
+      .limit(1);
+
+    if (!current) { res.status(404).json({ error: "المستفيد غير موجود" }); return; }
+
+    const oldAmt = parseFloat(tx.amount.replace(/,/g, "")) || 0;
+    const diff = newAmount - oldAmt;
+    const formatted = newAmount.toLocaleString("en-US");
+
+    type BeneficiaryUpdate = {
+      profits?: string;
+      fees?: string;
+      liberationFee?: string;
+      transactionFee?: string;
+    };
+
+    let benefUpdate: BeneficiaryUpdate = {};
+
+    if (tx.type === "add_profits") {
+      const cur = parseInt(current.profits.replace(/,/g, ""), 10) || 0;
+      benefUpdate = { profits: Math.max(0, cur + diff).toLocaleString("en-US") };
+    } else if (tx.type === "add_fees") {
+      const cur = parseInt(current.fees.replace(/,/g, ""), 10) || 0;
+      const next = Math.max(0, cur + diff);
+      benefUpdate = { fees: next === 0 ? "0" : next.toLocaleString("en-US") };
+    } else if (tx.type === "add_liberation_fee") {
+      benefUpdate = { liberationFee: formatted };
+    } else if (tx.type === "add_transaction_fee") {
+      benefUpdate = { transactionFee: formatted };
+    } else {
+      const addMatch = tx.type.match(/^add_custom_phase_(\d+)$/);
+      if (addMatch) {
+        const phaseId = Number(addMatch[1]);
+        await db
+          .update(userCustomPhasesTable)
+          .set({ amount: formatted, status: "unpaid" })
+          .where(
+            and(
+              eq(userCustomPhasesTable.userId, tx.beneficiaryId),
+              eq(userCustomPhasesTable.phaseId, phaseId),
+            ),
+          );
+      }
+    }
+
+    if (Object.keys(benefUpdate).length > 0) {
+      await db
+        .update(beneficiariesTable)
+        .set(benefUpdate)
+        .where(eq(beneficiariesTable.id, tx.beneficiaryId));
+    }
+
+    // Update description to reflect new amount
+    const newDescription = tx.description.replace(/[\d,]+(?= ر\.س)/, formatted);
+
+    const [updatedTx] = await db
+      .update(financialTransactionsTable)
+      .set({ amount: String(newAmount), description: newDescription })
+      .where(eq(financialTransactionsTable.id, id))
+      .returning();
+
+    res.json({ transaction: updatedTx });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "فشل تعديل مبلغ العملية" });
   }
 });
 
