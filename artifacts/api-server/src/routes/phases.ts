@@ -192,7 +192,7 @@ router.post("/beneficiaries/:id/custom-phases/:phaseId/pay", async (req, res): P
       return;
     }
 
-    const [row] = await db.update(userCustomPhasesTable).set({ status: "paid", paidAt })
+    const [row] = await db.update(userCustomPhasesTable).set({ status: "paid", paidAt, amount: "0" })
       .where(and(eq(userCustomPhasesTable.userId, userId), eq(userCustomPhasesTable.phaseId, phaseId)))
       .returning();
 
