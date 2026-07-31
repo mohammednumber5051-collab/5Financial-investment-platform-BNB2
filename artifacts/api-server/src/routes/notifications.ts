@@ -202,7 +202,7 @@ router.post("/beneficiaries/:id/pay-liberation-fee", async (req, res): Promise<v
     const paidAt = new Date();
     const [updated] = await db
       .update(beneficiariesTable)
-      .set({ liberationFeeStatus: "paid", liberationFeePaidAt: paidAt })
+      .set({ liberationFeeStatus: "paid", liberationFeePaidAt: paidAt, liberationFee: "0" })
       .where(eq(beneficiariesTable.id, id))
       .returning();
 
@@ -256,7 +256,7 @@ router.post("/beneficiaries/:id/pay-transaction-fee", async (req, res): Promise<
     const paidAt = new Date();
     const [updated] = await db
       .update(beneficiariesTable)
-      .set({ transactionFeeStatus: "paid", transactionFeePaidAt: paidAt })
+      .set({ transactionFeeStatus: "paid", transactionFeePaidAt: paidAt, transactionFee: "0" })
       .where(eq(beneficiariesTable.id, id))
       .returning();
 
