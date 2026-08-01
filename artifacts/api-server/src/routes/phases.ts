@@ -127,7 +127,14 @@ router.patch("/beneficiaries/:id/custom-phases/:phaseId/visibility", async (req,
     if (existing.length === 0) {
       [row] = await db.insert(userCustomPhasesTable).values({ userId, phaseId, visible, amount: "0", status: "unpaid" }).returning();
     } else {
-      [row] = await db.update(userCustomPhasesTable).set({ visible })
+      // عند تفعيل المرحلة من جديد: نُعيد الحالة إلى "unpaid" ونمسح paidAt
+      // حتى لا تبقى مرحلة قديمة مدفوعة محجوبة بسبب انقضاء 24 ساعة
+      const updateData: { visible: boolean; status?: string; paidAt?: Date | null } = { visible };
+      if (visible) {
+        updateData.status = "unpaid";
+        updateData.paidAt = null;
+      }
+      [row] = await db.update(userCustomPhasesTable).set(updateData)
         .where(and(eq(userCustomPhasesTable.userId, userId), eq(userCustomPhasesTable.phaseId, phaseId)))
         .returning();
     }
