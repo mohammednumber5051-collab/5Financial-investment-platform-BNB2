@@ -794,22 +794,27 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const phase3Active = user.phase3Visible && !(user.transactionFeeStatus === "paid" && isPast24h(user.transactionFeePaidAt));
 
   const visibleCustomPhase = (() => {
-    // نتجاهل المراحل التي اكتملت معالجتها (مسدد + مرور 24 ساعة)
-    const blockingUcps = userCustomPhases.filter(
-      (ucp) => ucp.visible && !(ucp.status === "paid" && isPast24h(ucp.paidAt))
-    );
-    if (blockingUcps.length === 0) return null;
-    const sorted = [...blockingUcps].sort((a, b) => {
-      // المراحل غير المدفوعة تأخذ الأولوية دائماً على المدفوعة (حتى لو لم تمر 24 ساعة)
-      const aUnpaid = a.status !== "paid" ? 1 : 0;
-      const bUnpaid = b.status !== "paid" ? 1 : 0;
-      if (aUnpaid !== bUnpaid) return bUnpaid - aUnpaid;
-      // بين المراحل من نفس الحالة: ترتيب حسب sortOrder تنازلياً
+    const sortByOrder = (a: UserCustomPhase, b: UserCustomPhase) => {
       const pa = customPhases.find((p) => p.id === a.phaseId);
       const pb = customPhases.find((p) => p.id === b.phaseId);
       return (pb?.sortOrder ?? 0) - (pa?.sortOrder ?? 0);
-    });
-    const ucp = sorted[0];
+    };
+
+    const allVisible = userCustomPhases.filter((ucp) => ucp.visible);
+
+    // الأولوية القصوى: المراحل المرئية غير المدفوعة
+    const unpaid = allVisible.filter((ucp) => ucp.status !== "paid");
+    if (unpaid.length > 0) {
+      const ucp = [...unpaid].sort(sortByOrder)[0];
+      return { ucp, phase: customPhases.find((p) => p.id === ucp.phaseId) };
+    }
+
+    // لا توجد مراحل غير مدفوعة — هل يوجد مرحلة مدفوعة لم تمر عليها 24 ساعة بعد؟
+    const paidRecent = allVisible.filter(
+      (ucp) => ucp.status === "paid" && !isPast24h(ucp.paidAt)
+    );
+    if (paidRecent.length === 0) return null;
+    const ucp = [...paidRecent].sort(sortByOrder)[0];
     return { ucp, phase: customPhases.find((p) => p.id === ucp.phaseId) };
   })();
 
