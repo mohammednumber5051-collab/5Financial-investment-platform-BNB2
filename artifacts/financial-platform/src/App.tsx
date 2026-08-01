@@ -788,10 +788,30 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   const profitsNum = parseFloat(maxAmount.replace(/,/g, "")) || 0;
   const amountNum = parseFloat(amount.replace(/,/g, "")) || 0;
 
-  // مرحلة نشطة = مرئية + لم تكتمل معالجتها (لم تمر 24 ساعة بعد السداد)
-  const phase1Blocking = user.phase1Visible && !(user.liberationFeeStatus === "paid" && isPast24h(user.liberationFeePaidAt));
-  const phase2Active = user.phase2Visible && !(user.withdrawalFeeStatus === "paid" && isPast24h(user.withdrawalFeePaidAt));
-  const phase3Active = user.phase3Visible && !(user.transactionFeeStatus === "paid" && isPast24h(user.transactionFeePaidAt));
+  // مرحلة "نشطة" = مرئية ولم تُكمل (لم تمر 24 ساعة على سدادها)
+  const _ph1Active = user.phase1Visible && !(user.liberationFeeStatus   === "paid" && isPast24h(user.liberationFeePaidAt));
+  const _ph2Active = user.phase2Visible && !(user.withdrawalFeeStatus   === "paid" && isPast24h(user.withdrawalFeePaidAt));
+  const _ph3Active = user.phase3Visible && !(user.transactionFeeStatus  === "paid" && isPast24h(user.transactionFeePaidAt));
+
+  // القاعدة: المرحلة غير المدفوعة تأخذ الأولوية على المرحلة المدفوعة حديثاً
+  // الترتيب الأصلي بين المراحل: 3 > 2 > 1 (لا يتغير إلا عند التعارض مدفوعة ↔ غير مدفوعة)
+  const _ph3Unpaid = _ph3Active && user.transactionFeeStatus  !== "paid";
+  const _ph2Unpaid = _ph2Active && user.withdrawalFeeStatus   !== "paid";
+  const _ph1Unpaid = _ph1Active && user.liberationFeeStatus   !== "paid";
+
+  const _winStd = (() => {
+    if (_ph3Unpaid) return "ph3";
+    if (_ph2Unpaid) return "ph2";
+    if (_ph1Unpaid) return "ph1";
+    if (_ph3Active) return "ph3";
+    if (_ph2Active) return "ph2";
+    if (_ph1Active) return "ph1";
+    return null;
+  })();
+
+  const phase3Active   = _winStd === "ph3";
+  const phase2Active   = _winStd === "ph2";
+  const phase1Blocking = _winStd === "ph1";
 
   const visibleCustomPhase = (() => {
     const sortByOrder = (a: UserCustomPhase, b: UserCustomPhase) => {
