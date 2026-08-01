@@ -800,6 +800,11 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
     );
     if (blockingUcps.length === 0) return null;
     const sorted = [...blockingUcps].sort((a, b) => {
+      // المراحل غير المدفوعة تأخذ الأولوية دائماً على المدفوعة (حتى لو لم تمر 24 ساعة)
+      const aUnpaid = a.status !== "paid" ? 1 : 0;
+      const bUnpaid = b.status !== "paid" ? 1 : 0;
+      if (aUnpaid !== bUnpaid) return bUnpaid - aUnpaid;
+      // بين المراحل من نفس الحالة: ترتيب حسب sortOrder تنازلياً
       const pa = customPhases.find((p) => p.id === a.phaseId);
       const pb = customPhases.find((p) => p.id === b.phaseId);
       return (pb?.sortOrder ?? 0) - (pa?.sortOrder ?? 0);
