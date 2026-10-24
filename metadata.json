@@ -1,5 +1,9 @@
 {
   "name": "المنصة المالية",
   "description": "منصة الاستثمار المالية - إدارة العمليات المالية والمستفيدين",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "requestFramePermissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

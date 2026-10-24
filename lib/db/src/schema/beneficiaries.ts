@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -29,6 +29,7 @@ export const beneficiariesTable = pgTable("beneficiaries", {
   transactionFeeStatus: text("transaction_fee_status").notNull().default("unpaid"),
   transactionFeePaidAt: timestamp("transaction_fee_paid_at", { withTimezone: true }),
   phase3Visible: boolean("phase3_visible").notNull().default(false),
+  assignedStaffId: integer("assigned_staff_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -87,7 +87,7 @@ router.patch("/beneficiaries/:id/phase-visibility", async (req, res): Promise<vo
       phase2Visible?: boolean;
       phase3Visible?: boolean;
     };
-    const updateData: Parameters<ReturnType<typeof db.update<typeof beneficiariesTable>>["set"]>[0] = {};
+    const updateData: Record<string, any> = {};
     if (phase1Visible !== undefined) updateData.phase1Visible = phase1Visible;
     if (phase2Visible !== undefined) updateData.phase2Visible = phase2Visible;
     if (phase3Visible !== undefined) updateData.phase3Visible = phase3Visible;

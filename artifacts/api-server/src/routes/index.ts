@@ -4,6 +4,7 @@ import beneficiariesRouter from "./beneficiaries";
 import notificationsRouter from "./notifications";
 import authRouter from "./auth";
 import phasesRouter from "./phases";
+import staffRouter from "./staff";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(authRouter);
 router.use(beneficiariesRouter);
 router.use(notificationsRouter);
 router.use(phasesRouter);
+router.use(staffRouter);
 
 export default router;

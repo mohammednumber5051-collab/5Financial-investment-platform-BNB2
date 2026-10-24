@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { StaffManagement, type StaffUser } from "./components/StaffManagement";
+import { ChangeStaffPasswordModal } from "./components/ChangeStaffPasswordModal";
+import { PartialPaymentModal } from "./components/PartialPaymentModal";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface User {
@@ -27,6 +30,7 @@ interface User {
   transactionFeeStatus: "unpaid" | "paid";
   transactionFeePaidAt: string | null;
   phase3Visible: boolean;
+  assignedStaffId?: number | null;
 }
 
 interface CustomPhase {
@@ -70,10 +74,20 @@ interface FinancialTransaction {
 type View =
   | { page: "login" }
   | { page: "client-login"; slug: string }
-  | { page: "admin" }
-  | { page: "user"; userId: string; fromAdmin?: boolean };
+  | { page: "admin"; role?: "admin" | "staff"; staff?: StaffUser }
+  | { page: "user"; userId: string; userObj?: User; fromAdmin?: boolean; returnRole?: "admin" | "staff"; returnStaff?: StaffUser };
 
 const STORAGE_KEY = "financial_platform_users";
+
+/* ─── Helpers ─────────────────────────────────────────────────── */
+function formatMoney(val: string | number | null | undefined): string {
+  if (val === null || val === undefined) return "0";
+  const str = String(val).replace(/,/g, "").trim();
+  if (!str) return "0";
+  const num = Number(str);
+  if (isNaN(num)) return "0";
+  return num.toLocaleString("en-US");
+}
 
 /* ─── API helper ────────────────────────────────────────────── */
 // The API lives at the root /api path (shared proxy routes /api → api-server)
@@ -81,9 +95,19 @@ const STORAGE_KEY = "financial_platform_users";
 async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { "Content-Type": "application/json" },
+    cache: "no-store",
     ...init,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    let msg = "";
+    try {
+      const errObj = await res.json();
+      msg = errObj.error || JSON.stringify(errObj);
+    } catch {
+      msg = await res.text();
+    }
+    throw new Error(msg || "حدث خطأ أثناء الاتصال بالخادم");
+  }
   return res.json() as Promise<T>;
 }
 
@@ -96,19 +120,20 @@ type ApiUser = Omit<User, "id" | "status" | "withdrawalFeeStatus" | "liberationF
   phase1Visible?: boolean;
   phase2Visible?: boolean;
   phase3Visible?: boolean;
+  assignedStaffId?: number | null;
 };
 
 function mapApiUser(u: ApiUser): User {
   return {
     id: String(u.id),
-    username: u.username,
-    name: u.name,
-    profits: u.profits,
-    subscription: u.subscription,
-    fees: u.fees,
-    accountHolder: u.accountHolder,
-    iban: u.iban,
-    phone: u.phone,
+    username: u.username || "",
+    name: u.name || "",
+    profits: formatMoney(u.profits),
+    subscription: formatMoney(u.subscription),
+    fees: formatMoney(u.fees),
+    accountHolder: u.accountHolder || u.name || "",
+    iban: u.iban || "",
+    phone: u.phone || "",
     status: (u.status === "disabled" ? "disabled" : "active") as "active" | "disabled",
     loginTitle: u.loginTitle ?? "",
     loginSlug: u.loginSlug ?? "",
@@ -116,22 +141,23 @@ function mapApiUser(u: ApiUser): User {
     withdrawalFeeStatus: u.withdrawalFeeStatus === "paid" ? "paid" : "unpaid",
     withdrawalFeePaidAt: u.withdrawalFeePaidAt ?? null,
     plainPassword: u.plainPassword ?? "",
-    phase1Visible: u.phase1Visible ?? false,
-    phase2Visible: u.phase2Visible ?? false,
-    liberationFee: u.liberationFee ?? "0",
+    phase1Visible: Boolean(u.phase1Visible),
+    phase2Visible: Boolean(u.phase2Visible),
+    liberationFee: formatMoney(u.liberationFee),
     liberationFeeStatus: u.liberationFeeStatus === "paid" ? "paid" : "unpaid",
     liberationFeePaidAt: u.liberationFeePaidAt ?? null,
-    transactionFee: u.transactionFee ?? "0",
+    transactionFee: formatMoney(u.transactionFee),
     transactionFeeStatus: u.transactionFeeStatus === "paid" ? "paid" : "unpaid",
     transactionFeePaidAt: u.transactionFeePaidAt ?? null,
-    phase3Visible: u.phase3Visible ?? false,
+    phase3Visible: Boolean(u.phase3Visible),
+    assignedStaffId: u.assignedStaffId ? Number(u.assignedStaffId) : null,
   };
 }
 
 function getClientSlugFromUrl(): string | null {
   const path = window.location.pathname;
   const match = path.match(/\/client\/([^/]+)\/?$/);
-  return match ? match[1] : null;
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function makeCardGradient(hex: string | null): string {
@@ -312,14 +338,20 @@ function LoginPage({ onLogin }: { onLogin: (view: View) => void }) {
 
     setLoading(true);
     try {
-      // Try admin login via backend first (credentials never leave the server)
+      // Try admin/staff login via backend first
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
       if (res.ok) {
-        onLogin({ page: "admin" });
+        const data = await res.json() as { success: boolean; role?: "admin" | "staff"; staff?: StaffUser };
+        onLogin({ page: "admin", role: data.role || "admin", staff: data.staff });
+        return;
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "هذا الحساب مجمد أو معطل حالياً");
         return;
       }
       // Not admin — try beneficiary login via server
@@ -466,14 +498,19 @@ function ClientLoginPage({ slug, onLogin }: { slug: string; onLogin: (view: View
 
   useEffect(() => {
     apiFetch<ApiUser>(`/beneficiaries/by-slug/${encodeURIComponent(slug)}`)
-      .then((u) => setBeneficiary(mapApiUser(u)))
+      .then((u) => {
+        const mapped = mapApiUser(u);
+        setBeneficiary(mapped);
+        setUsername((prev) => prev.trim() ? prev : (mapped.username || mapped.loginSlug || ""));
+      })
       .catch(() => setNotFound(true));
   }, [slug]);
 
   async function handleLogin() {
     setError("");
-    if (!username.trim() || !password.trim()) {
-      setError("يرجى إدخال اسم المستخدم وكلمة المرور");
+    const effectiveUser = username.trim() || (beneficiary?.username || beneficiary?.loginSlug || "");
+    if (!password.trim()) {
+      setError("يرجى إدخال كلمة المرور");
       return;
     }
     setLoading(true);
@@ -481,18 +518,28 @@ function ClientLoginPage({ slug, onLogin }: { slug: string; onLogin: (view: View
       const res = await fetch("/api/auth/beneficiary/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          username: effectiveUser,
+          password: password.trim(),
+          slug,
+        }),
       });
       if (res.status === 403) {
         setError("هذا الحساب معطّل. تواصل مع الإدارة");
         return;
       }
       if (!res.ok) {
-        setError("اسم المستخدم أو كلمة المرور غير صحيحة");
+        let errMsg = "اسم المستخدم أو كلمة المرور غير صحيحة";
+        try {
+          const errData = await res.json();
+          if (errData.error) errMsg = errData.error;
+        } catch { /* ignore */ }
+        setError(errMsg);
         return;
       }
-      const { id } = await res.json() as { id: number };
-      onLogin({ page: "user", userId: String(id) });
+      const data = (await res.json()) as { id: number; user?: ApiUser };
+      const userObj = data.user ? mapApiUser(data.user) : (beneficiary || undefined);
+      onLogin({ page: "user", userId: String(data.id), userObj });
     } catch {
       setError("تعذر الاتصال بالخادم، حاول مجدداً");
     } finally {
@@ -1054,11 +1101,19 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
               {iban}
             </div>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
-            style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}>
-            <span className="text-[18px] leading-none">⚠️</span>
-            <span className="text-[13px] font-bold text-[#92400e]">{currentFeeLabel} : {currentFeeAmount} ر.س</span>
-          </div>
+          {feesNum > 0 ? (
+            <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+              style={{ background: "#fef9ec", border: "1.5px solid #f5d97a" }}>
+              <span className="text-[18px] leading-none">⚠️</span>
+              <span className="text-[13px] font-bold text-[#92400e]">{currentFeeLabel} : {formatMoney(currentFeeAmount)} ر.س</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+              style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+              <span className="text-[18px] leading-none">✅</span>
+              <span className="text-[13px] font-bold text-[#166534]">لا توجد رسوم مطلوبة حالياً</span>
+            </div>
+          )}
           {amountNum > profitsNum && profitsNum > 0 && (
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-right"
               style={{ background: "#fff0f0", border: "1.5px solid #fecaca" }}>
@@ -1088,34 +1143,25 @@ function WithdrawModal({ onClose, maxAmount, iban, fees, userName, withdrawalFee
   );
 }
 
+function getTelegramCleanUrl(link: string): string {
+  let clean = link.trim();
+  const match = clean.match(/(?:t\.me\/|tg:\/\/resolve\?domain=)([A-Za-z0-9_]+)/);
+  if (match) return `https://t.me/${match[1]}`;
+  if (clean.startsWith("@")) return `https://t.me/${clean.slice(1)}`;
+  if (clean.startsWith("http://") || clean.startsWith("https://")) return clean;
+  return `https://t.me/${clean}`;
+}
+
 function openTelegramDirect(link: string) {
-  // Extract username from any format: @user / t.me/user / https://t.me/user / username
-  let username = link.trim();
-  const match = username.match(/(?:t\.me\/|tg:\/\/resolve\?domain=)([A-Za-z0-9_]+)/);
-  if (match) {
-    username = match[1];
-  } else if (username.startsWith("@")) {
-    username = username.slice(1);
-  }
-
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    // On mobile: https://t.me/ is a Universal/App Link → opens Telegram app directly
-    window.open(`https://t.me/${username}`, "_blank");
+  const url = getTelegramCleanUrl(link);
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (isIOS) {
+    window.location.href = url;
   } else {
-    // On desktop: try tg:// via hidden iframe so we don't navigate away from the page
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "display:none;width:0;height:0;border:none;";
-    iframe.src = `tg://resolve?domain=${username}`;
-    document.body.appendChild(iframe);
-    // Fallback to web only if the app didn't open (page still visible)
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-      if (!document.hidden) {
-        window.open(`https://t.me/${username}`, "_blank");
-      }
-    }, 1800);
+    const w = window.open(url, "_blank");
+    if (!w || w.closed || typeof w.closed === "undefined") {
+      window.location.href = url;
+    }
   }
 }
 
@@ -1147,6 +1193,11 @@ function UserDashboard({
   const [editTxAmt, setEditTxAmt] = useState("");
   const [customPhases, setCustomPhases] = useState<CustomPhase[]>([]);
   const [userCustomPhases, setUserCustomPhases] = useState<UserCustomPhase[]>([]);
+  const [partialModal, setPartialModal] = useState<{
+    phaseType: string;
+    phaseTitle: string;
+    currentAmount: number;
+  } | null>(null);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -1177,7 +1228,20 @@ function UserDashboard({
 
   useEffect(() => {
     void loadCustomPhases();
-  }, [loadCustomPhases]);
+    const interval = setInterval(() => {
+      void loadCustomPhases();
+      void onRefreshUser?.();
+    }, 4000);
+    const onFocus = () => {
+      void loadCustomPhases();
+      void onRefreshUser?.();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadCustomPhases, onRefreshUser]);
 
   async function markRead(id: number) {
     try {
@@ -1345,58 +1409,88 @@ function UserDashboard({
   return (
     <div className="max-w-md mx-auto">
       {/* Header */}
-      <div className="px-4 pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="text-right">
-            <h1 className="text-[19px] font-extrabold text-[#1a1f3c] leading-tight tracking-tight">المنصة المالية</h1>
-            <p className="text-[11px] text-[#5a6282] mt-1 leading-snug font-medium">مرحباً، {user.name}</p>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-1.5">
-              {!onBack && (
-                <button
-                  onClick={openNotifPanel}
-                  className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[#d0d7e8] shadow-sm hover:bg-gray-50 transition-colors"
-                  style={{ color: unreadCount > 0 ? "#2952e3" : "#8892a4" }}>
-                  <Icon.Bell />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-extrabold flex items-center justify-center leading-none">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </button>
-              )}
-              <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors" style={{ color: "#2952e3" }}>
-                <span className="text-[9px]">الريال السعودي (ر.س)</span>
-              </button>
-              {!onBack && (
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[#d0d7e8] shadow-sm hover:bg-gray-50 transition-colors"
-                  style={{ color: "#5a6282" }}
-                  title="إعدادات الحساب">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                  </svg>
-                </button>
-              )}
-              <button
-                onClick={onLogout}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-                <Icon.Logout />
-                <span>تسجيل الخروج</span>
-              </button>
+      <div className="px-4 pt-5 pb-3">
+        {/* Row 1: Brand & Action Controls */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2952e3] to-[#7c3aed] flex items-center justify-center text-white font-black text-sm shadow-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
             </div>
-            {onBack && (
+            <h1 className="text-[17px] font-extrabold text-[#1a1f3c] leading-none tracking-tight">المنصة المالية</h1>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {!onBack && (
+              <button
+                onClick={openNotifPanel}
+                className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-white border border-[#d0d7e8] shadow-xs hover:bg-gray-50 transition-colors"
+                style={{ color: unreadCount > 0 ? "#2952e3" : "#8892a4" }}
+                title="التنبيهات">
+                <Icon.Bell />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-extrabold flex items-center justify-center leading-none">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {!onBack && (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex items-center justify-center w-8 h-8 rounded-xl bg-white border border-[#d0d7e8] shadow-xs hover:bg-gray-50 transition-colors"
+                style={{ color: "#5a6282" }}
+                title="إعدادات الحساب">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            )}
+
+            {onBack ? (
               <button
                 onClick={onBack}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold shadow-sm transition-colors"
-                style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)", color: "white" }}>
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold shadow-xs text-white"
+                style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)" }}>
                 <Icon.ArrowLeft />
                 <span>قائمة المستفيدين</span>
               </button>
+            ) : (
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-xs hover:bg-gray-50 transition-colors">
+                <Icon.Logout />
+                <span>خروج</span>
+              </button>
             )}
+          </div>
+        </div>
+
+        {/* Row 2: User Welcome Card & Currency Badge */}
+        <div className="mt-3 bg-white/80 backdrop-blur-sm border border-[#d9e1ec] rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-[#2952e3] flex items-center justify-center text-xs font-bold shrink-0 border border-blue-200">
+              {user.name.trim().charAt(0) || "م"}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[13px] font-bold text-[#1a1f3c] truncate">{user.name}</span>
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-green-50 text-green-700 border border-green-200">
+                  موثق ✓
+                </span>
+              </div>
+              <p className="text-[10px] text-[#5a6282] font-medium leading-none mt-0.5">
+                حساب مستفيد نشط
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <span className="px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-100 text-[#2952e3] text-[10px] font-bold whitespace-nowrap">
+              ر.س (SAR)
+            </span>
           </div>
         </div>
       </div>
@@ -1482,11 +1576,17 @@ function UserDashboard({
               )}
               <div className="flex gap-2">
                 <button
-                  onClick={() => setAdminModal({ type: "pay-fees" })}
+                  onClick={() =>
+                    setPartialModal({
+                      phaseType: "withdrawal",
+                      phaseTitle: "رسوم السحب — المرحلة الثانية",
+                      currentAmount: parseInt(user.fees.replace(/,/g, ""), 10) || 0,
+                    })
+                  }
                   disabled={user.fees === "0" || user.withdrawalFeeStatus === "paid"}
                   className="flex-1 py-2.5 rounded-xl text-white font-bold text-[13px] transition-opacity active:opacity-90 disabled:opacity-40"
                   style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
-                  تأكيد سداد رسوم السحب
+                  تأكيد / تجزئة السداد
                 </button>
                 <button
                   onClick={() => void handleTogglePhase2()}
@@ -1534,11 +1634,17 @@ function UserDashboard({
                   إضافة رسوم التحرير
                 </button>
                 <button
-                  onClick={() => setAdminModal({ type: "pay-liberation-fee" })}
+                  onClick={() =>
+                    setPartialModal({
+                      phaseType: "liberation",
+                      phaseTitle: "رسوم تحرير الأرباح — المرحلة الأولى",
+                      currentAmount: parseInt(user.liberationFee.replace(/,/g, ""), 10) || 0,
+                    })
+                  }
                   disabled={user.liberationFee === "0" || user.liberationFeeStatus === "paid"}
                   className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
                   style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
-                  تأكيد السداد
+                  تأكيد / تجزئة السداد
                 </button>
                 <button
                   onClick={() => void handleTogglePhase1()}
@@ -1586,11 +1692,17 @@ function UserDashboard({
                   إضافة مبلغ المعاملة
                 </button>
                 <button
-                  onClick={() => setAdminModal({ type: "pay-transaction-fee" })}
+                  onClick={() =>
+                    setPartialModal({
+                      phaseType: "transaction",
+                      phaseTitle: "مبلغ المعاملة — المرحلة الثالثة",
+                      currentAmount: parseInt(user.transactionFee.replace(/,/g, ""), 10) || 0,
+                    })
+                  }
                   disabled={user.transactionFee === "0" || user.transactionFeeStatus === "paid"}
                   className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
                   style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
-                  تأكيد السداد
+                  تأكيد / تجزئة السداد
                 </button>
                 <button
                   onClick={() => void handleTogglePhase3()}
@@ -1641,11 +1753,17 @@ function UserDashboard({
                       إضافة المبلغ
                     </button>
                     <button
-                      onClick={() => setAdminModal({ type: "pay-custom-phase", phaseId: phase.id })}
+                      onClick={() =>
+                        setPartialModal({
+                          phaseType: `custom_${phase.id}`,
+                          phaseTitle: `${phase.name} — مرحلة مخصصة`,
+                          currentAmount: parseInt((ucp?.amount || "0").replace(/,/g, ""), 10) || 0,
+                        })
+                      }
                       disabled={!ucp?.amount || ucp?.amount === "0" || ucp?.status === "paid"}
                       className="flex-1 py-2.5 rounded-xl text-white font-bold text-[12px] transition-opacity active:opacity-90 disabled:opacity-40"
                       style={{ background: "linear-gradient(135deg,#c8005a,#f0196e)" }}>
-                      تأكيد السداد
+                      تأكيد / تجزئة السداد
                     </button>
                     <button
                       onClick={() => void handleToggleCustomPhase(phase.id)}
@@ -2432,9 +2550,51 @@ function UserDashboard({
                   يفتح تلجرام خلال <span className="font-bold text-[#0088cc]">{depositCountdown}</span> ثوانٍ — الصق الرسالة بعدها
                 </p>
               </div>
+
+              <div className="mt-4 flex flex-col gap-2">
+                <a
+                  href={getTelegramCleanUrl(user.telegramLink)}
+                  target={/iPhone|iPad|iPod/i.test(navigator.userAgent) ? "_top" : "_blank"}
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setDepositToast(false);
+                    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                      window.location.href = getTelegramCleanUrl(user.telegramLink);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-bold text-[13px] shadow-md transition-all active:scale-95 cursor-pointer"
+                  style={{ background: "linear-gradient(135deg,#0077b5 0%,#0088cc 60%,#29b6f6 100%)" }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+                  </svg>
+                  <span>فتح محادثة تلجرام الآن</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setDepositToast(false)}
+                  className="w-full py-2 text-[12px] text-[#8892a4] hover:text-[#5a6282] font-semibold"
+                >
+                  إلغاء
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Partial Payment Modal */}
+      {partialModal && (
+        <PartialPaymentModal
+          beneficiaryId={Number(user.id)}
+          phaseType={partialModal.phaseType}
+          phaseTitle={partialModal.phaseTitle}
+          currentAmount={partialModal.currentAmount}
+          onClose={() => setPartialModal(null)}
+          onSuccess={async () => {
+            await Promise.all([loadCustomPhases(), onRefreshUser?.()]);
+          }}
+        />
       )}
     </div>
   );
@@ -2445,6 +2605,14 @@ function UserDashboard({
 ═══════════════════════════════════════════════════════════════ */
 
 type UserFormData = Omit<User, "id"> & { password: string };
+
+const PROTECTED_FIELDS_FOR_STAFF: (keyof UserFormData)[] = [
+  "username",
+  "name",
+  "accountHolder",
+  "iban",
+  "loginSlug",
+];
 
 const emptyUser: UserFormData = {
   username: "",
@@ -2472,6 +2640,7 @@ const emptyUser: UserFormData = {
   phase1Visible: false,
   phase2Visible: false,
   phase3Visible: false,
+  assignedStaffId: null,
 };
 
 function UserFormModal({
@@ -2479,17 +2648,50 @@ function UserFormModal({
   initial,
   onSave,
   onClose,
+  isStaff = false,
+  canEditBeneficiaries = true,
 }: {
   mode: "create" | "edit";
   initial: UserFormData;
-  onSave: (data: UserFormData) => void;
+  onSave: (data: UserFormData) => Promise<void> | void;
   onClose: () => void;
+  isStaff?: boolean;
+  canEditBeneficiaries?: boolean;
 }) {
   const [form, setForm] = useState(initial);
   const [showPass, setShowPass] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
 
-  function set(key: keyof typeof form, val: string) {
+  function set(key: keyof typeof form, val: any) {
     setForm((p) => ({ ...p, [key]: val }));
+  }
+
+  async function handleSaveClick() {
+    if (isSubmitting || cannotSave) return;
+    setFormError("");
+
+    if (!form.username.trim()) {
+      setFormError("يرجى إدخال اسم المستخدم");
+      return;
+    }
+    if (!form.name.trim()) {
+      setFormError("يرجى إدخال اسم المستفيد الكامل");
+      return;
+    }
+    if (mode === "create" && !form.password.trim()) {
+      setFormError("يرجى إدخال كلمة المرور للمستفيد الجديد");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSave(form);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "فشل حفظ البيانات");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   const fields: { key: keyof Omit<User, "id" | "status">; label: string; placeholder: string; ltr?: boolean }[] = [
@@ -2501,37 +2703,61 @@ function UserFormModal({
     { key: "subscription", label: "مبلغ الاشتراك (ر.س)", placeholder: "1,000" },
     { key: "profits", label: "أرباح الاشتراك (ر.س)", placeholder: "17,400" },
     { key: "fees", label: "رسوم السحب (ر.س)", placeholder: "3,610" },
+    { key: "liberationFee", label: "رسوم تحرير الأرباح (ر.س)", placeholder: "3,120" },
+    { key: "transactionFee", label: "مبلغ المعاملة (ر.س)", placeholder: "3,120" },
     { key: "loginTitle", label: "عنوان صفحة تسجيل الدخول", placeholder: "شركة محمد أحمد للاستثمار" },
     { key: "loginSlug", label: "رابط تسجيل الدخول (Slug)", placeholder: "mohammed", ltr: true },
     { key: "telegramLink", label: "رابط تلجرام الإيداع", placeholder: "https://t.me/username", ltr: true },
   ];
 
+  const cannotSave = isStaff && mode === "edit" && !canEditBeneficiaries;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(15,20,50,0.55)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      onClick={(e) => !isSubmitting && e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-md bg-white rounded-t-3xl max-h-[92vh] overflow-y-auto"
         style={{ fontFamily: "'Cairo', sans-serif" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef0f6] sticky top-0 bg-white z-10 rounded-t-3xl">
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282] hover:bg-[#e8edf5] transition-colors">
+          <button onClick={onClose} disabled={isSubmitting} className="w-8 h-8 rounded-full bg-[#f3f5fa] flex items-center justify-center text-[#5a6282] hover:bg-[#e8edf5] transition-colors disabled:opacity-40">
             <Icon.X />
           </button>
-          <h3 className="text-[15px] font-bold text-[#1a1f3c]">
-            {mode === "create" ? "إضافة مستفيد جديد" : "تعديل بيانات المستفيد"}
-          </h3>
+          <div className="text-center">
+            <h3 className="text-[15px] font-bold text-[#1a1f3c]">
+              {mode === "create" ? "إضافة مستفيد جديد" : "تعديل بيانات المستفيد"}
+            </h3>
+            {isStaff && mode === "edit" && (
+              <p className="text-[10px] text-amber-600 font-semibold mt-0.5">
+                🔒 وضع المشرف: 5 حقول أساسية مقفلة ومحمية
+              </p>
+            )}
+          </div>
           <div className="w-8" />
         </div>
 
         <div className="px-5 py-5 flex flex-col gap-4" dir="rtl">
+          {formError && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[12px] font-bold text-center leading-relaxed">
+              ⚠️ {formError}
+            </div>
+          )}
+          {cannotSave && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[12px] font-bold text-center">
+              ⚠️ ليس لديك صلاحية من المدير لتعديل بيانات المستفيد
+            </div>
+          )}
+
           {/* Password field */}
           <div className="text-right">
-            <label className="block text-[11px] font-bold text-[#5a6282] mb-1.5">كلمة المرور</label>
+            <label className="block text-[11px] font-bold text-[#5a6282] mb-1.5">
+              {mode === "create" ? "كلمة المرور *" : "تغيير كلمة المرور (اختياري)"}
+            </label>
             <div className="relative">
               <input
                 type={showPass ? "text" : "password"}
                 dir="ltr"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
-                placeholder="أدخل كلمة المرور"
+                placeholder={mode === "create" ? "أدخل كلمة المرور" : "اتركه فارغاً للإبقاء على الحالية"}
                 className="w-full px-4 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[12px] font-semibold text-right outline-none focus:border-[#7c3aed] focus:ring-1 focus:ring-[#7c3aed] transition-all pr-10"
               />
               <button type="button" onClick={() => setShowPass(!showPass)}
@@ -2541,20 +2767,36 @@ function UserFormModal({
             </div>
           </div>
 
-          {fields.map((f) => (
-            <div key={f.key} className="text-right">
-              <label className="block text-[11px] font-bold text-[#5a6282] mb-1.5">{f.label}</label>
-              <input
-                type="text"
-                value={form[f.key] as string}
-                onChange={(e) => set(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                dir={f.ltr ? "ltr" : "rtl"}
-                className="w-full px-4 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[12px] font-semibold text-right outline-none focus:border-[#7c3aed] focus:ring-1 focus:ring-[#7c3aed] transition-all"
-                style={f.ltr ? { textAlign: "left", direction: "ltr" } : {}}
-              />
-            </div>
-          ))}
+          {fields.map((f) => {
+            const isProtected = isStaff && mode === "edit" && PROTECTED_FIELDS_FOR_STAFF.includes(f.key as keyof UserFormData);
+            return (
+              <div key={f.key} className="text-right">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-bold text-[#5a6282]">{f.label}</label>
+                  {isProtected && (
+                    <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      محمي (خاص بالمدير)
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={(form[f.key] as string) || ""}
+                  onChange={(e) => !isProtected && set(f.key, e.target.value)}
+                  placeholder={f.placeholder}
+                  disabled={isProtected}
+                  dir={f.ltr ? "ltr" : "rtl"}
+                  className={`w-full px-4 py-2.5 rounded-xl border text-[12px] font-semibold text-right outline-none transition-all ${
+                    isProtected
+                      ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed select-none"
+                      : "border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] focus:border-[#7c3aed] focus:ring-1 focus:ring-[#7c3aed]"
+                  }`}
+                  style={f.ltr ? { textAlign: "left", direction: "ltr" } : {}}
+                />
+              </div>
+            );
+          })}
 
           {/* Status */}
           <div className="text-right">
@@ -2574,10 +2816,58 @@ function UserFormModal({
             </div>
           </div>
 
-          <button onClick={() => onSave(form)}
-            className="w-full py-3.5 rounded-2xl text-white font-bold text-[14px] mt-2 transition-opacity active:opacity-90"
+          {/* Phase cards visibility */}
+          <div className="text-right bg-[#f8f9fc] p-3.5 rounded-2xl border border-[#e2e8f0]">
+            <label className="block text-[11px] font-bold text-[#1a1f3c] mb-2.5">
+              بطاقات المراحل المعروضة للمستفيد:
+            </label>
+            <div className="flex flex-col gap-2.5">
+              <label className="flex items-center gap-2 cursor-pointer text-[12px] font-bold text-[#374151]">
+                <input
+                  type="checkbox"
+                  checked={form.phase1Visible}
+                  onChange={(e) => set("phase1Visible", e.target.checked)}
+                  className="rounded text-[#2952e3] focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <span>إظهار بطاقة رسوم تحرير الأرباح (المرحلة الأولى)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-[12px] font-bold text-[#374151]">
+                <input
+                  type="checkbox"
+                  checked={form.phase2Visible}
+                  onChange={(e) => set("phase2Visible", e.target.checked)}
+                  className="rounded text-[#2952e3] focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <span>إظهار بطاقة رسوم السحب (المرحلة الثانية)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-[12px] font-bold text-[#374151]">
+                <input
+                  type="checkbox"
+                  checked={form.phase3Visible}
+                  onChange={(e) => set("phase3Visible", e.target.checked)}
+                  className="rounded text-[#2952e3] focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <span>إظهار بطاقة مبلغ المعاملة (المرحلة الثالثة)</span>
+              </label>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            disabled={cannotSave || isSubmitting}
+            className="w-full py-3.5 rounded-2xl text-white font-bold text-[14px] mt-2 transition-all flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
             style={{ background: "linear-gradient(135deg,#2952e3,#7c3aed)" }}>
-            {mode === "create" ? "إضافة المستفيد" : "حفظ التعديلات"}
+            {isSubmitting ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>جارٍ الحفظ والمزامنة...</span>
+              </>
+            ) : mode === "create" ? (
+              "إضافة المستفيد"
+            ) : (
+              "حفظ التعديلات"
+            )}
           </button>
         </div>
       </div>
@@ -2616,12 +2906,21 @@ function AdminDashboard({
   onRefresh,
   onLogout,
   onViewUser,
+  role = "admin",
+  staff = null,
 }: {
   users: User[];
   onRefresh: () => Promise<void>;
   onLogout: () => void;
   onViewUser: (userId: string) => void;
+  role?: "admin" | "staff";
+  staff?: StaffUser | null;
 }) {
+  const isStaff = role === "staff";
+  const [adminTab, setAdminTab] = useState<"beneficiaries" | "staff">("beneficiaries");
+  const [showChangePassModal, setShowChangePassModal] = useState(false);
+  const [staffList, setStaffList] = useState<StaffUser[]>([]);
+
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [showPassId, setShowPassId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -2635,6 +2934,25 @@ function AdminDashboard({
   const [newPhaseCardColor, setNewPhaseCardColor] = useState("");
   const [editPhase, setEditPhase] = useState<CustomPhase | null>(null);
   const [deletePhaseId, setDeletePhaseId] = useState<number | null>(null);
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
+  const [feeFilter, setFeeFilter] = useState<"all" | "unpaid_withdrawal" | "unpaid_liberation" | "unpaid_transaction" | "all_paid">("all");
+  const [staffFilter, setStaffFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"newest" | "name" | "profits" | "fees">("newest");
+
+  const loadStaffList = useCallback(async () => {
+    if (role !== "admin") return;
+    try {
+      const data = await apiFetch<StaffUser[]>("/admin/staff");
+      setStaffList(data);
+    } catch { /* silent */ }
+  }, [role]);
+
+  useEffect(() => {
+    void loadStaffList();
+  }, [loadStaffList]);
 
   const loadPhases = useCallback(async () => {
     setPhaseLoading(true);
@@ -2698,17 +3016,33 @@ function AdminDashboard({
     });
   }
 
+  async function handleQuickTogglePhase(userId: string, phaseKey: "phase1Visible" | "phase2Visible" | "phase3Visible", val: boolean) {
+    try {
+      await apiFetch(`/beneficiaries/${userId}/phase-visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ [phaseKey]: val }),
+      });
+      await onRefresh();
+    } catch (e) {
+      alert("فشل تغيير ظهور البطاقة: " + (e instanceof Error ? e.message : "خطأ"));
+    }
+  }
+
   async function handleCreate(data: UserFormData) {
     setSaving(true);
     try {
       await apiFetch("/beneficiaries", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          assignedStaffId: isStaff ? staff?.id : data.assignedStaffId,
+        }),
       });
-      await onRefresh();
+      await Promise.all([onRefresh(), loadStaffList()]);
       setModal({ type: "none" });
     } catch (e) {
-      alert("فشل حفظ المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+      const msg = e instanceof Error ? e.message : "خطأ غير معروف";
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }
@@ -2725,7 +3059,8 @@ function AdminDashboard({
       await onRefresh();
       setModal({ type: "none" });
     } catch (e) {
-      alert("فشل تعديل المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
+      const msg = e instanceof Error ? e.message : "خطأ غير معروف";
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }
@@ -2736,7 +3071,7 @@ function AdminDashboard({
     setSaving(true);
     try {
       await apiFetch(`/beneficiaries/${modal.userId}`, { method: "DELETE" });
-      await onRefresh();
+      await Promise.all([onRefresh(), loadStaffList()]);
       setModal({ type: "none" });
     } catch (e) {
       alert("فشل حذف المستفيد: " + (e instanceof Error ? e.message : "خطأ غير معروف"));
@@ -2766,413 +3101,820 @@ function AdminDashboard({
 
   void saving;
 
+  // Pool of beneficiaries visible to this role (deduplicated by id)
+  const uniqueUsers = Array.from(new Map(users.map((u) => [String(u.id), u])).values());
+  const userPool = isStaff
+    ? uniqueUsers.filter((u) => u.assignedStaffId === staff?.id)
+    : uniqueUsers;
+
+  // Quota & permissions
+  const quota = staff?.maxBeneficiariesQuota ?? 0;
+  const myAssignedCount = users.filter((u) => u.assignedStaffId === staff?.id).length;
+  const isQuotaReached = isStaff && myAssignedCount >= quota;
+  const canAdd = isStaff ? ((staff?.canAddBeneficiaries ?? false) && !isQuotaReached) : true;
+  const canManagePhases = isStaff ? (staff?.canManagePhases ?? false) : true;
+  const canEditBeneficiaries = isStaff ? (staff?.canEditBeneficiaries ?? true) : true;
+
+  // Advanced Search & Filter computation
+  const filteredUsers = userPool.filter((u) => {
+    // Search text
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const match =
+        u.name.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        (u.phone && u.phone.includes(q)) ||
+        (u.accountHolder && u.accountHolder.toLowerCase().includes(q)) ||
+        (u.iban && u.iban.toLowerCase().includes(q)) ||
+        (u.loginSlug && u.loginSlug.toLowerCase().includes(q));
+      if (!match) return false;
+    }
+
+    // Status filter
+    if (statusFilter !== "all" && u.status !== statusFilter) return false;
+
+    // Fee filter
+    if (feeFilter === "unpaid_withdrawal") {
+      if (u.withdrawalFeeStatus === "paid" || u.fees === "0" || !u.fees) return false;
+    } else if (feeFilter === "unpaid_liberation") {
+      if (u.liberationFeeStatus === "paid" || u.liberationFee === "0" || !u.liberationFee) return false;
+    } else if (feeFilter === "unpaid_transaction") {
+      if (u.transactionFeeStatus === "paid" || u.transactionFee === "0" || !u.transactionFee) return false;
+    } else if (feeFilter === "all_paid") {
+      const wUnpaid = u.withdrawalFeeStatus !== "paid" && u.fees !== "0" && !!u.fees;
+      const lUnpaid = u.liberationFeeStatus !== "paid" && u.liberationFee !== "0" && !!u.liberationFee;
+      const tUnpaid = u.transactionFeeStatus !== "paid" && u.transactionFee !== "0" && !!u.transactionFee;
+      if (wUnpaid || lUnpaid || tUnpaid) return false;
+    }
+
+    // Staff filter (Super Admin only)
+    if (!isStaff && staffFilter !== "all") {
+      if (staffFilter === "unassigned") {
+        if (u.assignedStaffId != null) return false;
+      } else {
+        if (u.assignedStaffId !== Number(staffFilter)) return false;
+      }
+    }
+
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === "name") return a.name.localeCompare(b.name, "ar");
+    if (sortBy === "profits") {
+      const pA = parseInt((a.profits || "0").replace(/,/g, ""), 10) || 0;
+      const pB = parseInt((b.profits || "0").replace(/,/g, ""), 10) || 0;
+      return pB - pA;
+    }
+    if (sortBy === "fees") {
+      const fA = parseInt((a.fees || "0").replace(/,/g, ""), 10) || 0;
+      const fB = parseInt((b.fees || "0").replace(/,/g, ""), 10) || 0;
+      return fB - fA;
+    }
+    return Number(b.id) - Number(a.id);
+  });
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    statusFilter !== "all" ||
+    feeFilter !== "all" ||
+    staffFilter !== "all" ||
+    sortBy !== "newest";
+
+  function resetFilters() {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setFeeFilter("all");
+    setStaffFilter("all");
+    setSortBy("newest");
+  }
+
   const editingUser = modal.type === "edit" ? users.find((u) => u.id === modal.userId) : null;
   const disablingUser = modal.type === "disable" ? users.find((u) => u.id === modal.userId) : null;
 
   return (
     <div className="max-w-md mx-auto min-h-screen pb-10" dir="rtl">
       {/* Header */}
-      <div className="px-4 pt-5 pb-4">
+      <div className="px-4 pt-5 pb-3">
         <div className="flex items-center justify-between">
-          <button onClick={onLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors">
-            <Icon.Logout />
-            <span>خروج</span>
-          </button>
-          <div className="text-right">
-            <h1 className="text-[19px] font-extrabold text-[#1a1f3c]">قائمة المستفيدين</h1>
-            <p className="text-[11px] text-[#5a6282] font-medium">مرحباً، المدير</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="px-4 mb-5">
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "إجمالي المستفيدين", value: users.length, color: "#2952e3" },
-            { label: "حسابات نشطة", value: users.filter((u) => u.status === "active").length, color: "#16a34a" },
-            { label: "حسابات معطّلة", value: users.filter((u) => u.status === "disabled").length, color: "#ef4444" },
-          ].map((s) => (
-            <div key={s.label} className="bg-white rounded-2xl p-3 text-center border border-[#e2e8f0] shadow-sm">
-              <p className="font-extrabold text-[22px] leading-none" style={{ color: s.color }}>{s.value}</p>
-              <p className="text-[9px] font-semibold text-[#8892a4] mt-1 leading-snug">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Phases Management Button */}
-      <div className="px-4 mb-4">
-        <button
-          onClick={() => setShowPhases((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
-          style={{ background: "linear-gradient(135deg,#1e3a5f,#2952e3)" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <span>إدارة المراحل المخصصة</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: showPhases ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-
-        {showPhases && (
-          <div className="mt-3 bg-white rounded-2xl border border-[#e2e8f0] shadow-sm p-4">
-            <p className="text-[13px] font-bold text-[#1a1f3c] mb-4 text-right">إنشاء مرحلة جديدة</p>
-            <input
-              type="text"
-              value={newPhaseName}
-              onChange={(e) => setNewPhaseName(e.target.value)}
-              placeholder="اسم المرحلة..."
-              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
-              dir="rtl"
-            />
-            <input
-              type="text"
-              value={newPhaseFailureMessage}
-              onChange={(e) => setNewPhaseFailureMessage(e.target.value)}
-              placeholder="نص رسالة الفشل (مطلوب)..."
-              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
-              dir="rtl"
-            />
-            <input
-              type="text"
-              value={newPhaseFailureTitle}
-              onChange={(e) => setNewPhaseFailureTitle(e.target.value)}
-              placeholder="عنوان رسالة الفشل (اختياري)..."
-              className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
-              dir="rtl"
-            />
-            <div className="flex items-center gap-2 mb-3">
-              <input
-                type="color"
-                value={newPhaseCardColor || "#1a1f3c"}
-                onChange={(e) => setNewPhaseCardColor(e.target.value)}
-                className="w-10 h-10 rounded-lg border border-[#e2e8f0] cursor-pointer"
-                title="لون البطاقة"
-              />
-              <input
-                type="text"
-                value={newPhaseCardColor}
-                onChange={(e) => setNewPhaseCardColor(e.target.value)}
-                placeholder="لون البطاقة (اختياري) مثال: #8B1A1A"
-                className="flex-1 px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none"
-                dir="ltr"
-              />
-            </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => void handleCreatePhase()}
-              disabled={!newPhaseName.trim() || !newPhaseFailureMessage.trim() || phaseLoading}
-              className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] disabled:opacity-40 transition-opacity active:opacity-90"
-              style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
-              {phaseLoading ? "جارٍ الحفظ..." : "إضافة المرحلة"}
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#d0d7e8] text-[#1a1f3c] text-[11px] font-semibold shadow-sm hover:bg-gray-50 transition-colors"
+            >
+              <Icon.Logout />
+              <span>خروج</span>
             </button>
-
-            {phases.length > 0 && (
-              <div className="mt-4 flex flex-col gap-3">
-                <p className="text-[12px] font-bold text-[#8892a4] text-right">المراحل الموجودة ({phases.length})</p>
-                {phases.map((phase) => (
-                  <div key={phase.id} className="p-3 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc]">
-                    {editPhase?.id === phase.id ? (
-                      <div>
-                        <input
-                          type="text"
-                          value={editPhase.name}
-                          onChange={(e) => setEditPhase({ ...editPhase, name: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
-                          dir="rtl"
-                        />
-                        <input
-                          type="text"
-                          value={editPhase.failureMessage}
-                          onChange={(e) => setEditPhase({ ...editPhase, failureMessage: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
-                          dir="rtl"
-                          placeholder="نص رسالة الفشل (مطلوب)..."
-                        />
-                        <input
-                          type="text"
-                          value={editPhase.failureTitle ?? ""}
-                          onChange={(e) => setEditPhase({ ...editPhase, failureTitle: e.target.value || null })}
-                          className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
-                          dir="rtl"
-                          placeholder="عنوان رسالة الفشل (اختياري)..."
-                        />
-                        <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="color"
-                            value={editPhase.cardColor || "#1a1f3c"}
-                            onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value })}
-                            className="w-8 h-8 rounded-lg border border-[#e2e8f0] cursor-pointer"
-                          />
-                          <input
-                            type="text"
-                            value={editPhase.cardColor ?? ""}
-                            onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value || null })}
-                            className="flex-1 px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold outline-none"
-                            dir="ltr"
-                            placeholder="لون البطاقة مثال: #8B1A1A"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => void handleUpdatePhase()} disabled={phaseLoading}
-                            className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
-                            style={{ background: "linear-gradient(135deg,#2952e3,#4f8ef7)" }}>
-                            حفظ
-                          </button>
-                          <button onClick={() => setEditPhase(null)}
-                            className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
-                            إلغاء
-                          </button>
-                        </div>
-                      </div>
-                    ) : deletePhaseId === phase.id ? (
-                      <div className="text-right">
-                        <p className="text-[12px] font-bold text-[#ef4444] mb-2">حذف "{phase.name}"؟</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => void handleDeletePhase(phase.id)} disabled={phaseLoading}
-                            className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
-                            style={{ background: "linear-gradient(135deg,#dc2626,#ef4444)" }}>
-                            تأكيد الحذف
-                          </button>
-                          <button onClick={() => setDeletePhaseId(null)}
-                            className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
-                            إلغاء
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                          <button onClick={() => setDeletePhaseId(phase.id)}
-                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                          </button>
-                          <button onClick={() => setEditPhase(phase)}
-                            className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 transition-colors">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[13px] font-bold text-[#1a1f3c]">{phase.name}</p>
-                          {phase.failureMessage && <p className="text-[10px] text-[#8892a4] mt-0.5">{phase.failureMessage}</p>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {isStaff && (
+              <button
+                onClick={() => setShowChangePassModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold shadow-sm hover:bg-indigo-100 transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>كلمة المرور</span>
+              </button>
             )}
           </div>
-        )}
+          <div className="text-right">
+            <h1 className="text-[19px] font-extrabold text-[#1a1f3c]">لوحة التحكم</h1>
+            <p className="text-[11px] text-[#5a6282] font-medium">
+              {isStaff ? `مرحباً، ${staff?.name || "المشرف"}` : "مرحباً، المدير العام"}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Section header */}
-      <div className="px-4 flex items-center justify-between mb-4">
-        <button onClick={() => setModal({ type: "create" })}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-[12px] font-bold shadow-md transition-opacity active:opacity-90"
-          style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
-          <Icon.Plus />
-          <span>إضافة مستفيد</span>
-        </button>
-        <h2 className="text-[15px] font-bold text-[#1a1f3c]">المستفيدون</h2>
-      </div>
+      {/* Super Admin Top Tabs Switcher */}
+      {!isStaff && (
+        <div className="px-4 mb-4">
+          <div className="flex p-1 bg-white rounded-2xl border border-[#e2e8f0] shadow-sm">
+            <button
+              onClick={() => setAdminTab("beneficiaries")}
+              className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                adminTab === "beneficiaries"
+                  ? "bg-[#2952e3] text-white shadow"
+                  : "text-[#5a6282] hover:text-[#1a1f3c]"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>قائمة المستفيدين</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-extrabold ${adminTab === "beneficiaries" ? "bg-white/20 text-white" : "bg-gray-100 text-[#5a6282]"}`}>
+                {users.length}
+              </span>
+            </button>
+            <button
+              onClick={() => setAdminTab("staff")}
+              className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                adminTab === "staff"
+                  ? "bg-[#2952e3] text-white shadow"
+                  : "text-[#5a6282] hover:text-[#1a1f3c]"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>المستخدمين والمشرفين</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-extrabold ${adminTab === "staff" ? "bg-white/20 text-white" : "bg-gray-100 text-[#5a6282]"}`}>
+                {staffList.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Beneficiary Cards */}
-      <div className="px-4 flex flex-col gap-4">
-        {users.map((user) => (
-          <div key={user.id} className="bg-white rounded-3xl border border-[#e2e8f0] shadow-sm overflow-hidden">
-            <div className="h-1.5 w-full"
-              style={{ background: user.status === "active" ? "linear-gradient(90deg,#2952e3,#7c3aed)" : "#d1d5db" }} />
-
-            <div className="p-4">
-              {/* Identity row — name is clickable */}
-              <div className="flex items-start justify-between mb-4">
-                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${user.status === "active" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
-                  {user.status === "active" ? "نشط" : "معطّل"}
-                </span>
-                <div className="text-right">
-                  <button
-                    onClick={() => onViewUser(user.id)}
-                    className="text-[14px] font-bold text-[#2952e3] leading-snug hover:underline text-right"
-                  >
-                    {user.name}
-                  </button>
-                  <p className="text-[11px] text-[#8892a4] font-medium mt-0.5" dir="ltr" style={{ textAlign: "right" }}>
-                    @{user.username}
-                  </p>
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="mb-4 text-right">
-                <label className="block text-[10px] font-bold text-[#8892a4] mb-1">كلمة المرور</label>
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f8f9fc] border border-[#e8eaf0]">
-                  <button onClick={() => setShowPassId(showPassId === user.id ? null : user.id)}
-                    className="text-[#8892a4] hover:text-[#5a6282]">
-                    {showPassId === user.id ? <Icon.EyeOff /> : <Icon.Eye />}
-                  </button>
-                  <span className="text-[12px] font-semibold text-[#1a1f3c]" dir="ltr">
-                    {showPassId === user.id
-                      ? (user.plainPassword || <span className="text-[#8892a4] italic text-[11px]">لم تُضبط بعد</span>)
-                      : "••••••••"}
+      {/* If Admin is on Staff Tab, show the Staff Management Panel */}
+      {!isStaff && adminTab === "staff" ? (
+        <StaffManagement
+          beneficiaries={users}
+          onRefreshBeneficiaries={onRefresh}
+        />
+      ) : (
+        <>
+          {/* Staff Quota Bar (If Staff) */}
+          {isStaff && staff && (
+            <div className="px-4 mb-4">
+              <div className="bg-white rounded-2xl p-4 border border-[#e2e8f0] shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    isQuotaReached ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                  }`}>
+                    {isQuotaReached ? "تم استهلاك الحصة بالكامل" : "حصة إضافة المستفيدين"}
                   </span>
+                  <div className="flex items-baseline gap-1" dir="ltr">
+                    <span className="text-[15px] font-extrabold text-[#1a1f3c]">{myAssignedCount}</span>
+                    <span className="text-[12px] text-[#8892a4]">/</span>
+                    <span className="text-[15px] font-extrabold text-[#2952e3]">{quota}</span>
+                  </div>
+                </div>
+                <div className="w-full bg-[#f1f5f9] rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-300 ${
+                      isQuotaReached
+                        ? "bg-red-500"
+                        : myAssignedCount / Math.max(1, quota) > 0.8
+                        ? "bg-amber-500"
+                        : "bg-[#2952e3]"
+                    }`}
+                    style={{ width: `${Math.min(100, (myAssignedCount / Math.max(1, quota)) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-2.5 text-[10px] text-[#8892a4]">
+                  <span>المستفيدين المرتبطين بك: <strong className="text-[#1a1f3c]">{myAssignedCount}</strong></span>
+                  <span>المتبقي لإضافته: <strong className="text-[#2952e3]">{Math.max(0, quota - myAssignedCount)}</strong></span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Stats Bar */}
+          <div className="px-4 mb-4">
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: isStaff ? "مستفيديك" : "إجمالي المستفيدين", value: userPool.length, color: "#2952e3" },
+                { label: "حسابات نشطة", value: userPool.filter((u) => u.status === "active").length, color: "#16a34a" },
+                { label: "حسابات معطّلة", value: userPool.filter((u) => u.status === "disabled").length, color: "#ef4444" },
+              ].map((s) => (
+                <div key={s.label} className="bg-white rounded-2xl p-3 text-center border border-[#e2e8f0] shadow-sm">
+                  <p className="font-extrabold text-[22px] leading-none" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-[9px] font-semibold text-[#8892a4] mt-1 leading-snug">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Phases Management (Admin or Staff with canManagePhases) */}
+          {canManagePhases && (
+            <div className="px-4 mb-4">
+              <button
+                onClick={() => setShowPhases((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-2xl text-white font-bold text-[13px] transition-opacity active:opacity-90"
+                style={{ background: "linear-gradient(135deg,#1e3a5f,#2952e3)" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>إدارة المراحل المخصصة</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: showPhases ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {showPhases && (
+                <div className="mt-3 bg-white rounded-2xl border border-[#e2e8f0] shadow-sm p-4">
+                  <p className="text-[13px] font-bold text-[#1a1f3c] mb-4 text-right">إنشاء مرحلة جديدة</p>
+                  <input
+                    type="text"
+                    value={newPhaseName}
+                    onChange={(e) => setNewPhaseName(e.target.value)}
+                    placeholder="اسم المرحلة..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                    dir="rtl"
+                  />
+                  <input
+                    type="text"
+                    value={newPhaseFailureMessage}
+                    onChange={(e) => setNewPhaseFailureMessage(e.target.value)}
+                    placeholder="نص رسالة الفشل (مطلوب)..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                    dir="rtl"
+                  />
+                  <input
+                    type="text"
+                    value={newPhaseFailureTitle}
+                    onChange={(e) => setNewPhaseFailureTitle(e.target.value)}
+                    placeholder="عنوان رسالة الفشل (اختياري)..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none mb-2"
+                    dir="rtl"
+                  />
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="color"
+                      value={newPhaseCardColor || "#1a1f3c"}
+                      onChange={(e) => setNewPhaseCardColor(e.target.value)}
+                      className="w-10 h-10 rounded-lg border border-[#e2e8f0] cursor-pointer"
+                      title="لون البطاقة"
+                    />
+                    <input
+                      type="text"
+                      value={newPhaseCardColor}
+                      onChange={(e) => setNewPhaseCardColor(e.target.value)}
+                      placeholder="لون البطاقة (اختياري) مثال: #8B1A1A"
+                      className="flex-1 px-3 py-2.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[#1a1f3c] text-[13px] font-semibold text-right outline-none"
+                      dir="ltr"
+                    />
+                  </div>
+                  <button
+                    onClick={() => void handleCreatePhase()}
+                    disabled={!newPhaseName.trim() || !newPhaseFailureMessage.trim() || phaseLoading}
+                    className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] disabled:opacity-40 transition-opacity active:opacity-90"
+                    style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+                    {phaseLoading ? "جارٍ الحفظ..." : "إضافة المرحلة"}
+                  </button>
+
+                  {phases.length > 0 && (
+                    <div className="mt-4 flex flex-col gap-3">
+                      <p className="text-[12px] font-bold text-[#8892a4] text-right">المراحل الموجودة ({phases.length})</p>
+                      {phases.map((phase) => (
+                        <div key={phase.id} className="p-3 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc]">
+                          {editPhase?.id === phase.id ? (
+                            <div>
+                              <input
+                                type="text"
+                                value={editPhase.name}
+                                onChange={(e) => setEditPhase({ ...editPhase, name: e.target.value })}
+                                className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                                dir="rtl"
+                              />
+                              <input
+                                type="text"
+                                value={editPhase.failureMessage}
+                                onChange={(e) => setEditPhase({ ...editPhase, failureMessage: e.target.value })}
+                                className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                                dir="rtl"
+                                placeholder="نص رسالة الفشل (مطلوب)..."
+                              />
+                              <input
+                                type="text"
+                                value={editPhase.failureTitle ?? ""}
+                                onChange={(e) => setEditPhase({ ...editPhase, failureTitle: e.target.value || null })}
+                                className="w-full px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold text-right outline-none mb-2"
+                                dir="rtl"
+                                placeholder="عنوان رسالة الفشل (اختياري)..."
+                              />
+                              <div className="flex items-center gap-2 mb-2">
+                                <input
+                                  type="color"
+                                  value={editPhase.cardColor || "#1a1f3c"}
+                                  onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value })}
+                                  className="w-8 h-8 rounded-lg border border-[#e2e8f0] cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={editPhase.cardColor ?? ""}
+                                  onChange={(e) => setEditPhase({ ...editPhase, cardColor: e.target.value || null })}
+                                  className="flex-1 px-3 py-2 rounded-xl border border-[#e2e8f0] bg-white text-[#1a1f3c] text-[12px] font-semibold outline-none"
+                                  dir="ltr"
+                                  placeholder="لون البطاقة مثال: #8B1A1A"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => void handleUpdatePhase()} disabled={phaseLoading}
+                                  className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
+                                  style={{ background: "linear-gradient(135deg,#2952e3,#4f8ef7)" }}>
+                                  حفظ
+                                </button>
+                                <button onClick={() => setEditPhase(null)}
+                                  className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
+                                  إلغاء
+                                </button>
+                              </div>
+                            </div>
+                          ) : deletePhaseId === phase.id ? (
+                            <div className="text-right">
+                              <p className="text-[12px] font-bold text-[#ef4444] mb-2">حذف "{phase.name}"؟</p>
+                              <div className="flex gap-2">
+                                <button onClick={() => void handleDeletePhase(phase.id)} disabled={phaseLoading}
+                                  className="flex-1 py-2 rounded-xl text-white font-bold text-[12px] disabled:opacity-40"
+                                  style={{ background: "linear-gradient(135deg,#dc2626,#ef4444)" }}>
+                                  تأكيد الحذف
+                                </button>
+                                <button onClick={() => setDeletePhaseId(null)}
+                                  className="flex-1 py-2 rounded-xl text-[#5a6282] font-bold text-[12px] bg-[#f0f0f0]">
+                                  إلغاء
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <div className="flex gap-2">
+                                <button onClick={() => setDeletePhaseId(phase.id)}
+                                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                                </button>
+                                <button onClick={() => setEditPhase(phase)}
+                                  className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 transition-colors">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[13px] font-bold text-[#1a1f3c]">{phase.name}</p>
+                                {phase.failureMessage && <p className="text-[10px] text-[#8892a4] mt-0.5">{phase.failureMessage}</p>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Section Header with Add Beneficiary ── */}
+          <div className="px-4 flex items-center justify-between mb-3">
+            {canAdd ? (
+              <button
+                onClick={() => setModal({ type: "create" })}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-[12px] font-bold shadow-md transition-opacity active:opacity-90"
+                style={{ background: "linear-gradient(135deg,#0f7a38,#22c55e)" }}>
+                <Icon.Plus />
+                <span>إضافة مستفيد</span>
+              </button>
+            ) : isStaff && isQuotaReached ? (
+              <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                ⚠️ اكتملت حصتك ({quota})
+              </div>
+            ) : (
+              <div />
+            )}
+            <h2 className="text-[15px] font-extrabold text-[#1a1f3c]">المستفيدون</h2>
+          </div>
+
+          {/* ── Professional Filters & Search Bar (Requirement 2) ── */}
+          <div className="px-4 mb-4">
+            <div className="bg-white rounded-2xl p-3.5 border border-[#e2e8f0] shadow-sm flex flex-col gap-3">
+              {/* Search input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="بحث سريع بالاسم، المستخدم، الهاتف، الإيبان..."
+                  className="w-full pr-10 pl-9 py-2.5 rounded-xl bg-[#f8f9fc] border border-[#e2e8f0] text-[#1a1f3c] text-[12px] font-semibold text-right outline-none focus:border-[#2952e3] focus:bg-white transition-all"
+                  dir="rtl"
+                />
+                <div className="absolute top-1/2 -translate-y-1/2 right-3 text-[#8892a4]">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute top-1/2 -translate-y-1/2 left-3 text-[#8892a4] hover:text-[#1a1f3c]"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Status pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] font-bold" dir="rtl">
+                <span className="text-[#8892a4] text-[10px] ml-1 flex-shrink-0">الحالة:</span>
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className={`px-3 py-1 rounded-lg transition-colors flex-shrink-0 ${
+                    statusFilter === "all" ? "bg-[#2952e3] text-white" : "bg-[#f1f5f9] text-[#5a6282] hover:bg-gray-200"
+                  }`}
+                >
+                  الكل
+                </button>
+                <button
+                  onClick={() => setStatusFilter("active")}
+                  className={`px-3 py-1 rounded-lg transition-colors flex-shrink-0 ${
+                    statusFilter === "active" ? "bg-emerald-600 text-white" : "bg-[#f1f5f9] text-[#5a6282] hover:bg-gray-200"
+                  }`}
+                >
+                  نشط
+                </button>
+                <button
+                  onClick={() => setStatusFilter("disabled")}
+                  className={`px-3 py-1 rounded-lg transition-colors flex-shrink-0 ${
+                    statusFilter === "disabled" ? "bg-rose-600 text-white" : "bg-[#f1f5f9] text-[#5a6282] hover:bg-gray-200"
+                  }`}
+                >
+                  معطّل
+                </button>
+              </div>
+
+              {/* Fee status & Sort dropdowns */}
+              <div className="grid grid-cols-2 gap-2 text-right">
+                <div>
+                  <label className="block text-[9px] font-bold text-[#8892a4] mb-1">فلتر الرسوم والمراحل</label>
+                  <select
+                    value={feeFilter}
+                    onChange={(e) => setFeeFilter(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[11px] font-bold text-[#1a1f3c] outline-none"
+                    dir="rtl"
+                  >
+                    <option value="all">كل الرسوم</option>
+                    <option value="unpaid_withdrawal">رسوم السحب غير مسددة</option>
+                    <option value="unpaid_liberation">رسوم التحرير غير مسددة</option>
+                    <option value="unpaid_transaction">مبلغ المعاملة غير مسدد</option>
+                    <option value="all_paid">المسدد بالكامل ✓</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-[#8892a4] mb-1">الترتيب حسب</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[11px] font-bold text-[#1a1f3c] outline-none"
+                    dir="rtl"
+                  >
+                    <option value="newest">الأحدث إضافة</option>
+                    <option value="profits">أعلى أرباح</option>
+                    <option value="fees">أعلى رسوم سحب</option>
+                    <option value="name">الاسم أبجدياً (أ-ي)</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Financial grid */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {[
-                  { label: "أرباح الاشتراك", value: user.profits, color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-                  { label: "مبلغ الاشتراك", value: user.subscription, color: "#2952e3", bg: "#eff6ff", border: "#bfdbfe" },
-                  { label: "رسوم السحب", value: user.fees, color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
-                ].map((d) => (
-                  <div key={d.label} className="rounded-xl p-2.5 text-center border" style={{ background: d.bg, borderColor: d.border }}>
-                    <p className="font-extrabold text-[13px] leading-none" style={{ color: d.color }}>{d.value}</p>
-                    <p className="text-[8px] font-semibold mt-1 text-[#8892a4] leading-snug">{d.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Bank info */}
-              <div className="rounded-2xl p-3.5 text-right mb-4"
-                style={{ background: "linear-gradient(135deg,#5b21b6,#7c3aed)" }}>
-                <p className="text-white/60 text-[9px] font-medium mb-0.5">اسم صاحب الحساب</p>
-                <p className="text-white font-bold text-[12px] leading-snug mb-2">{user.accountHolder}</p>
-                <p className="text-white/60 text-[9px] font-medium mb-0.5">رقم الإيبان</p>
-                <p className="text-white font-bold text-[11px]" dir="ltr" style={{ textAlign: "right", letterSpacing: "0.05em" }}>
-                  {user.iban}
-                </p>
-              </div>
-
-              {/* Telegram link */}
-              {user.telegramLink ? (
-                <div className="rounded-2xl p-3.5 text-right mb-4"
-                  style={{ background: "#f0f9ff", border: "1.5px solid #bae6fd" }}>
-                  <p className="text-[10px] font-bold text-[#0369a1] mb-1">رابط تلجرام الإيداع</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <a
-                      href={user.telegramLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex-shrink-0"
-                      style={{ background: "#0088cc", color: "white", border: "1.5px solid #0077b5" }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
-                      </svg>
-                      <span>فتح</span>
-                    </a>
-                    <p className="text-[11px] font-semibold text-[#0369a1] break-all flex-1" dir="ltr" style={{ textAlign: "left" }}>
-                      {user.telegramLink}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl p-3.5 text-right mb-4"
-                  style={{ background: "#f8f9fc", border: "1.5px solid #e2e8f0" }}>
-                  <p className="text-[10px] font-bold text-[#8892a4] mb-1">رابط تلجرام الإيداع</p>
-                  <p className="text-[11px] text-[#8892a4] font-medium mt-1">
-                    لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
-                  </p>
+              {/* Supervisor filter (Admin only) */}
+              {!isStaff && staffList.length > 0 && (
+                <div>
+                  <label className="block text-[9px] font-bold text-[#8892a4] mb-1">المشرف المسؤول</label>
+                  <select
+                    value={staffFilter}
+                    onChange={(e) => setStaffFilter(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-[#e2e8f0] bg-[#f8f9fc] text-[11px] font-bold text-[#1a1f3c] outline-none"
+                    dir="rtl"
+                  >
+                    <option value="all">جميع المشرفين</option>
+                    <option value="unassigned">غير مخصص لمشرف</option>
+                    {staffList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (@{s.username})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
-              {/* Login URL info */}
-              {(() => {
-                const clientUrl = user.loginSlug
-                  ? `${window.location.origin}${import.meta.env.BASE_URL}client/${user.loginSlug}`
-                  : "";
-                const isCopied = copiedId === user.id;
-                return (
-                  <div className="rounded-2xl p-3.5 text-right mb-4"
-                    style={{
-                      background: user.loginSlug ? "#f0fdf4" : "#f8f9fc",
-                      border: `1.5px solid ${user.loginSlug ? "#bbf7d0" : "#e2e8f0"}`,
-                    }}>
-                    <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
-                      عنوان صفحة تسجيل الدخول
-                    </p>
-                    <p className="text-[12px] font-bold text-[#1a1f3c] mb-2 leading-snug">
-                      {user.loginTitle || "—"}
-                    </p>
-                    <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
-                      رابط تسجيل الدخول
-                    </p>
-                    {user.loginSlug ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <button
-                          onClick={() => copyUrl(user.id, clientUrl)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex-shrink-0"
-                          style={{
-                            background: isCopied ? "#dcfce7" : "#e0f2fe",
-                            color: isCopied ? "#15803d" : "#0369a1",
-                            border: `1.5px solid ${isCopied ? "#86efac" : "#bae6fd"}`,
-                          }}
-                        >
-                          {isCopied ? <Icon.CopyDone /> : <Icon.Copy />}
-                          <span>{isCopied ? "تم النسخ!" : "نسخ"}</span>
-                        </button>
-                        <p
-                          className="text-[11px] font-semibold text-[#2952e3] break-all flex-1"
-                          dir="ltr"
-                          style={{ textAlign: "left" }}
-                        >
-                          {clientUrl}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-[#8892a4] font-medium mt-1">
-                        لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Action buttons */}
-              <div className="flex gap-2">
-                <button onClick={() => setModal({ type: "edit", userId: user.id })}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
-                  style={{ background: "#eff6ff", color: "#2952e3", border: "1.5px solid #bfdbfe" }}>
-                  <Icon.Edit /><span>تعديل</span>
-                </button>
-                <button onClick={() => setModal({ type: "disable", userId: user.id })}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
-                  style={{
-                    background: user.status === "active" ? "#fef3c7" : "#dcfce7",
-                    color: user.status === "active" ? "#d97706" : "#16a34a",
-                    border: `1.5px solid ${user.status === "active" ? "#fde68a" : "#86efac"}`,
-                  }}>
-                  <Icon.Ban /><span>{user.status === "active" ? "تعطيل" : "تفعيل"}</span>
-                </button>
-                <button onClick={() => setModal({ type: "delete", userId: user.id })}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
-                  style={{ background: "#fef2f2", color: "#ef4444", border: "1.5px solid #fecaca" }}>
-                  <Icon.Trash /><span>حذف</span>
-                </button>
+              {/* Filter summary bar */}
+              <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-[10px]">
+                {hasActiveFilters && (
+                  <button
+                    onClick={resetFilters}
+                    className="text-indigo-600 hover:text-indigo-800 font-bold underline"
+                  >
+                    إعادة ضبط الفلاتر
+                  </button>
+                )}
+                <span className="text-[#8892a4] font-semibold mr-auto">
+                  عرض <strong className="text-[#1a1f3c]">{filteredUsers.length}</strong> من أصل {userPool.length} مستفيد
+                </span>
               </div>
             </div>
           </div>
-        ))}
 
-        {users.length === 0 && (
-          <div className="text-center py-16 text-[#8892a4]">
-            <p className="text-[13px] font-semibold">لا يوجد مستفيدون حتى الآن</p>
-            <p className="text-[11px] mt-1">اضغط على "إضافة مستفيد" للبدء</p>
+          {/* ── Beneficiary Cards ── */}
+          <div className="px-4 flex flex-col gap-4">
+            {filteredUsers.map((user) => {
+              const assignedStaffName = staffList.find((s) => s.id === user.assignedStaffId)?.name;
+              return (
+                <div key={user.id} className="bg-white rounded-3xl border border-[#e2e8f0] shadow-sm overflow-hidden">
+                  <div className="h-1.5 w-full"
+                    style={{ background: user.status === "active" ? "linear-gradient(90deg,#2952e3,#7c3aed)" : "#d1d5db" }} />
+
+                  <div className="p-4">
+                    {/* Identity row — name is clickable */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${user.status === "active" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
+                          {user.status === "active" ? "نشط" : "معطّل"}
+                        </span>
+                        {!isStaff && (
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${assignedStaffName ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-gray-100 text-gray-500"}`}>
+                            {assignedStaffName ? `المشرف: ${assignedStaffName}` : "بدون مشرف"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <button
+                          onClick={() => onViewUser(user.id)}
+                          className="text-[14px] font-bold text-[#2952e3] leading-snug hover:underline text-right"
+                        >
+                          {user.name}
+                        </button>
+                        <p className="text-[11px] text-[#8892a4] font-medium mt-0.5" dir="ltr" style={{ textAlign: "right" }}>
+                          @{user.username}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="mb-4 text-right">
+                      <label className="block text-[10px] font-bold text-[#8892a4] mb-1">كلمة المرور</label>
+                      <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f8f9fc] border border-[#e8eaf0]">
+                        <button onClick={() => setShowPassId(showPassId === user.id ? null : user.id)}
+                          className="text-[#8892a4] hover:text-[#5a6282]">
+                          {showPassId === user.id ? <Icon.EyeOff /> : <Icon.Eye />}
+                        </button>
+                        <span className="text-[12px] font-semibold text-[#1a1f3c]" dir="ltr">
+                          {showPassId === user.id
+                            ? (user.plainPassword || <span className="text-[#8892a4] italic text-[11px]">لم تُضبط بعد</span>)
+                            : "••••••••"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Financial grid */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {[
+                        { label: "أرباح الاشتراك", value: user.profits, color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+                        { label: "مبلغ الاشتراك", value: user.subscription, color: "#2952e3", bg: "#eff6ff", border: "#bfdbfe" },
+                        { label: "رسوم السحب", value: user.fees, color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
+                      ].map((d) => (
+                        <div key={d.label} className="rounded-xl p-2.5 text-center border" style={{ background: d.bg, borderColor: d.border }}>
+                          <p className="font-extrabold text-[13px] leading-none" style={{ color: d.color }}>{d.value}</p>
+                          <p className="text-[8px] font-semibold mt-1 text-[#8892a4] leading-snug">{d.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Phase Cards Visibility Control */}
+                    <div className="rounded-2xl p-3 bg-[#f8f9fc] border border-[#e2e8f0] mb-4 text-right">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-[#1a1f3c]">بطاقات المراحل للمستفيد:</span>
+                        <span className="text-[9px] text-[#8892a4] font-medium">التحكم الفوري بالظهور</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void handleQuickTogglePhase(user.id, "phase1Visible", !user.phase1Visible)}
+                          className={`py-2 px-1 rounded-xl text-[10px] font-bold transition-all border flex flex-col items-center justify-center gap-1 ${
+                            user.phase1Visible
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs"
+                              : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                          }`}
+                          title="رسوم تحرير الأرباح (المرحلة الأولى)"
+                        >
+                          <span className="text-[11px] font-extrabold">{user.phase1Visible ? "🟢 ظاهر" : "⚫ مخفي"}</span>
+                          <span className="leading-tight text-[10px]">رسوم التحرير</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleQuickTogglePhase(user.id, "phase2Visible", !user.phase2Visible)}
+                          className={`py-2 px-1 rounded-xl text-[10px] font-bold transition-all border flex flex-col items-center justify-center gap-1 ${
+                            user.phase2Visible
+                              ? "bg-amber-50 text-amber-700 border-amber-300 shadow-xs"
+                              : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                          }`}
+                          title="رسوم السحب (المرحلة الثانية)"
+                        >
+                          <span className="text-[11px] font-extrabold">{user.phase2Visible ? "🟢 ظاهر" : "⚫ مخفي"}</span>
+                          <span className="leading-tight text-[10px]">رسوم السحب</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleQuickTogglePhase(user.id, "phase3Visible", !user.phase3Visible)}
+                          className={`py-2 px-1 rounded-xl text-[10px] font-bold transition-all border flex flex-col items-center justify-center gap-1 ${
+                            user.phase3Visible
+                              ? "bg-blue-50 text-blue-700 border-blue-300 shadow-xs"
+                              : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                          }`}
+                          title="مبلغ المعاملة (المرحلة الثالثة)"
+                        >
+                          <span className="text-[11px] font-extrabold">{user.phase3Visible ? "🟢 ظاهر" : "⚫ مخفي"}</span>
+                          <span className="leading-tight text-[10px]">مبلغ المعاملة</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bank info */}
+                    <div className="rounded-2xl p-3.5 text-right mb-4"
+                      style={{ background: "linear-gradient(135deg,#5b21b6,#7c3aed)" }}>
+                      <p className="text-white/60 text-[9px] font-medium mb-0.5">اسم صاحب الحساب</p>
+                      <p className="text-white font-bold text-[12px] leading-snug mb-2">{user.accountHolder}</p>
+                      <p className="text-white/60 text-[9px] font-medium mb-0.5">رقم الإيبان</p>
+                      <p className="text-white font-bold text-[11px]" dir="ltr" style={{ textAlign: "right", letterSpacing: "0.05em" }}>
+                        {user.iban}
+                      </p>
+                    </div>
+
+                    {/* Telegram link */}
+                    {user.telegramLink ? (
+                      <div className="rounded-2xl p-3.5 text-right mb-4"
+                        style={{ background: "#f0f9ff", border: "1.5px solid #bae6fd" }}>
+                        <p className="text-[10px] font-bold text-[#0369a1] mb-1">رابط تلجرام الإيداع</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <a
+                            href={user.telegramLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex-shrink-0"
+                            style={{ background: "#0088cc", color: "white", border: "1.5px solid #0077b5" }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.074 9.763c-.154.7-.566.87-1.148.54l-3.18-2.34-1.534 1.473c-.17.17-.312.312-.64.312l.228-3.233 5.88-5.306c.255-.228-.055-.354-.397-.126L6.91 14.41l-3.13-.978c-.68-.212-.693-.68.142-.998l12.24-4.717c.567-.206 1.063.126.4.531z"/>
+                            </svg>
+                            <span>فتح</span>
+                          </a>
+                          <p className="text-[11px] font-semibold text-[#0369a1] break-all flex-1" dir="ltr" style={{ textAlign: "left" }}>
+                            {user.telegramLink}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl p-3.5 text-right mb-4"
+                        style={{ background: "#f8f9fc", border: "1.5px solid #e2e8f0" }}>
+                        <p className="text-[10px] font-bold text-[#8892a4] mb-1">رابط تلجرام الإيداع</p>
+                        <p className="text-[11px] text-[#8892a4] font-medium mt-1">
+                          لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Login URL info */}
+                    {(() => {
+                      const clientUrl = user.loginSlug
+                        ? `${window.location.origin}${import.meta.env.BASE_URL}client/${user.loginSlug}`
+                        : "";
+                      const isCopied = copiedId === user.id;
+                      return (
+                        <div className="rounded-2xl p-3.5 text-right mb-4"
+                          style={{
+                            background: user.loginSlug ? "#f0fdf4" : "#f8f9fc",
+                            border: `1.5px solid ${user.loginSlug ? "#bbf7d0" : "#e2e8f0"}`,
+                          }}>
+                          <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
+                            عنوان صفحة تسجيل الدخول
+                          </p>
+                          <p className="text-[12px] font-bold text-[#1a1f3c] mb-2 leading-snug">
+                            {user.loginTitle || "—"}
+                          </p>
+                          <p className="text-[10px] font-bold mb-1" style={{ color: user.loginSlug ? "#15803d" : "#8892a4" }}>
+                            رابط تسجيل الدخول
+                          </p>
+                          {user.loginSlug ? (
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                onClick={() => copyUrl(user.id, clientUrl)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex-shrink-0"
+                                style={{
+                                  background: isCopied ? "#dcfce7" : "#e0f2fe",
+                                  color: isCopied ? "#15803d" : "#0369a1",
+                                  border: `1.5px solid ${isCopied ? "#86efac" : "#bae6fd"}`,
+                                }}
+                              >
+                                {isCopied ? <Icon.CopyDone /> : <Icon.Copy />}
+                                <span>{isCopied ? "تم النسخ!" : "نسخ"}</span>
+                              </button>
+                              <p
+                                className="text-[11px] font-semibold text-[#2952e3] break-all flex-1"
+                                dir="ltr"
+                                style={{ textAlign: "left" }}
+                              >
+                                {clientUrl}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-[#8892a4] font-medium mt-1">
+                              لم يُحدد رابط بعد — أضفه عبر تعديل المستفيد
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2">
+                      <button onClick={() => setModal({ type: "edit", userId: user.id })}
+                        disabled={isStaff && !canEditBeneficiaries}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ background: "#eff6ff", color: "#2952e3", border: "1.5px solid #bfdbfe" }}>
+                        <Icon.Edit /><span>تعديل</span>
+                      </button>
+                      <button onClick={() => setModal({ type: "disable", userId: user.id })}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
+                        style={{
+                          background: user.status === "active" ? "#fef3c7" : "#dcfce7",
+                          color: user.status === "active" ? "#d97706" : "#16a34a",
+                          border: `1.5px solid ${user.status === "active" ? "#fde68a" : "#86efac"}`,
+                        }}>
+                        <Icon.Ban /><span>{user.status === "active" ? "تعطيل" : "تفعيل"}</span>
+                      </button>
+                      {!isStaff && (
+                        <button onClick={() => setModal({ type: "delete", userId: user.id })}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
+                          style={{ background: "#fef2f2", color: "#ef4444", border: "1.5px solid #fecaca" }}>
+                          <Icon.Trash /><span>حذف</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredUsers.length === 0 && (
+              <div className="text-center py-16 text-[#8892a4]">
+                <p className="text-[13px] font-semibold">لا يوجد مستفيدون يطابقون شروط البحث</p>
+                {hasActiveFilters && (
+                  <button onClick={resetFilters} className="text-[#2952e3] font-bold text-[12px] mt-2 underline">
+                    إلغاء شروط الفلترة
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* Change Staff Password Modal */}
+      {showChangePassModal && staff && (
+        <ChangeStaffPasswordModal
+          staffId={staff.id}
+          staffUsername={staff.username}
+          onClose={() => setShowChangePassModal(false)}
+        />
+      )}
 
       {/* Modals */}
       {modal.type === "create" && (
-        <UserFormModal mode="create" initial={emptyUser} onSave={handleCreate} onClose={() => setModal({ type: "none" })} />
+        <UserFormModal
+          mode="create"
+          initial={emptyUser}
+          isStaff={isStaff}
+          canEditBeneficiaries={canEditBeneficiaries}
+          onSave={handleCreate}
+          onClose={() => setModal({ type: "none" })}
+        />
       )}
       {modal.type === "edit" && editingUser && (
         <UserFormModal
           mode="edit"
+          isStaff={isStaff}
+          canEditBeneficiaries={canEditBeneficiaries}
           initial={{
             username: editingUser.username,
             password: "",
@@ -3199,6 +3941,7 @@ function AdminDashboard({
             phase1Visible: editingUser.phase1Visible ?? false,
             phase2Visible: editingUser.phase2Visible ?? false,
             phase3Visible: editingUser.phase3Visible ?? false,
+            assignedStaffId: editingUser.assignedStaffId ?? null,
           }}
           onSave={handleEdit}
           onClose={() => setModal({ type: "none" })}
@@ -3226,8 +3969,6 @@ function AdminDashboard({
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
 
-// Safe localStorage wrappers — embedded browsers (Telegram, Instagram, etc.)
-// may throw SecurityError or have localStorage disabled entirely.
 function safeStorageGet(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
 }
@@ -3255,22 +3996,62 @@ export default function App() {
     try {
       const data = await apiFetch<ApiUser[]>("/beneficiaries");
       const mapped = data.map(mapApiUser);
-      setUsers(mapped);
-      // also keep localStorage in sync as fallback
-      safeStorageSet(STORAGE_KEY, JSON.stringify(mapped));
+      const unique = Array.from(new Map(mapped.map((u) => [String(u.id), u])).values());
+      setUsers(unique);
+      safeStorageSet(STORAGE_KEY, JSON.stringify(unique));
     } catch {
-      // API unavailable → fall back to localStorage
-      setUsers(loadLocalUsers());
+      setUsers((prev) => (prev.length > 0 ? prev : loadLocalUsers()));
     } finally {
       setLoadingUsers(false);
     }
   }, []);
 
-  useEffect(() => { void refreshUsers(); }, [refreshUsers]);
+  useEffect(() => {
+    void refreshUsers();
 
-  const activeUser = view.page === "user" ? users.find((u) => u.id === view.userId) : null;
+    const onFocusOrVisible = () => {
+      void refreshUsers();
+    };
+    window.addEventListener("focus", onFocusOrVisible);
+    document.addEventListener("visibilitychange", onFocusOrVisible);
 
-  if (loadingUsers && view.page !== "client-login") {
+    const interval = setInterval(() => {
+      void refreshUsers();
+    }, 5000);
+
+    return () => {
+      window.removeEventListener("focus", onFocusOrVisible);
+      document.removeEventListener("visibilitychange", onFocusOrVisible);
+      clearInterval(interval);
+    };
+  }, [refreshUsers]);
+
+  const userFromList =
+    view.page === "user" ? users.find((u) => String(u.id) === String(view.userId)) : null;
+  // Prioritize the fresh live data from `users` list, with view.userObj as initial fallback
+  const activeUser = userFromList || (view.page === "user" ? view.userObj || null : null);
+
+  // Hydration fallback: If in user view and user is not yet in state, fetch directly
+  useEffect(() => {
+    if (view.page === "user" && !activeUser && view.userId) {
+      apiFetch<ApiUser>(`/beneficiaries/${view.userId}`)
+        .then((u) => {
+          const mapped = mapApiUser(u);
+          setUsers((prev) => {
+            const idx = prev.findIndex((x) => String(x.id) === String(mapped.id));
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = mapped;
+              return next;
+            }
+            return [...prev, mapped];
+          });
+        })
+        .catch((err) => console.error("Error hydrating user:", err));
+    }
+  }, [view, activeUser]);
+
+  if (loadingUsers && view.page !== "client-login" && !activeUser) {
     return (
       <div dir="rtl" style={{
         minHeight: "100vh",
@@ -3317,18 +4098,20 @@ export default function App() {
           users={users}
           onRefresh={refreshUsers}
           onLogout={() => setView({ page: "login" })}
-          onViewUser={(userId) => setView({ page: "user", userId, fromAdmin: true })}
+          onViewUser={(userId) => setView({ page: "user", userId, fromAdmin: true, returnRole: view.role, returnStaff: view.staff })}
+          role={view.role}
+          staff={view.staff}
         />
       )}
       {view.page === "user" && activeUser && (
         <UserDashboard
           user={activeUser}
           onLogout={() => setView({ page: "login" })}
-          onBack={view.fromAdmin ? () => setView({ page: "admin" }) : undefined}
-          onRefreshUser={view.fromAdmin ? refreshUsers : undefined}
+          onBack={view.fromAdmin ? () => setView({ page: "admin", role: view.returnRole, staff: view.returnStaff }) : undefined}
+          onRefreshUser={refreshUsers}
         />
       )}
-      {view.page === "user" && !activeUser && loadingUsers && (
+      {view.page === "user" && !activeUser && (
         <div dir="rtl" style={{
           minHeight: "100vh",
           background: "linear-gradient(160deg,#1a1f3c 0%,#2952e3 50%,#7c3aed 100%)",
@@ -3345,6 +4128,15 @@ export default function App() {
             animation: "spin 0.8s linear infinite",
           }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontWeight: 700 }}>
+            جارٍ تحميل بيانات المستفيد...
+          </p>
+          <button
+            onClick={() => setView({ page: "login" })}
+            className="px-4 py-2 rounded-xl text-white text-xs font-bold"
+            style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)" }}>
+            العودة لصفحة الدخول
+          </button>
         </div>
       )}
     </div>
